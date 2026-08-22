@@ -35,18 +35,16 @@ st.markdown(
     """
 <style>
 :root {
-    --ink: #0B1220;
-    --navy: #10213B;
-    --navy-2: #16345B;
-    --steel: #35546F;
-    --paper: #F4F7FA;
+    --bg: #FBFCFE;
     --surface: #FFFFFF;
-    --line: #D9E2EA;
-    --muted: #687786;
-    --signal: #F2B84B;
-    --signal-soft: #FFF5DA;
-    --good: #167A58;
-    --danger: #B83A3A;
+    --text: #111827;
+    --muted: #667085;
+    --line: #E7EAF0;
+    --blue: #246BFD;
+    --blue-2: #1859DB;
+    --blue-soft: #EEF4FF;
+    --green: #159467;
+    --amber: #B7791F;
 }
 
 html, body, [class*="css"] {
@@ -54,207 +52,145 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background:
-        radial-gradient(circle at 88% 0%, rgba(22,52,91,.08), transparent 30rem),
-        var(--paper);
-    color: var(--ink);
+    background: var(--bg);
+    color: var(--text);
 }
 
 [data-testid="stHeader"] {
-    background: rgba(244,247,250,.88);
+    background: rgba(251,252,254,.92);
     backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(217,226,234,.72);
+    border-bottom: 1px solid rgba(231,234,240,.78);
 }
 
-#MainMenu,
-footer,
-[data-testid="stToolbar"],
-[data-testid="stDecoration"],
-[data-testid="stStatusWidget"] {
+#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"] {
     visibility: hidden;
 }
 
 .block-container {
-    max-width: 1180px;
-    padding-top: 1.4rem;
+    max-width: 1120px;
+    padding-top: 1.1rem;
     padding-bottom: 4rem;
 }
 
-/* brand image */
+h1, h2, h3, h4 {
+    color: var(--text);
+    letter-spacing: -0.035em;
+}
+
+h1 {
+    font-size: clamp(2.55rem, 6vw, 4.9rem) !important;
+    line-height: .98 !important;
+    font-weight: 780 !important;
+    max-width: 820px;
+}
+
+h2 { font-weight: 740 !important; }
+h3 { font-weight: 720 !important; }
+p, .stCaption { color: var(--muted); }
+
 [data-testid="stImage"] img {
     border-radius: 18px;
 }
 
-/* headings */
-h1, h2, h3, h4 {
-    letter-spacing: -.025em;
-    color: var(--ink);
-}
-
-h1 {
-    font-size: clamp(2rem, 5vw, 3.65rem) !important;
-    line-height: 1.02 !important;
-    font-weight: 800 !important;
-}
-
-h2 { font-weight: 780 !important; }
-h3 { font-weight: 750 !important; }
-
-p, .stCaption { color: var(--muted); }
-
-/* cards */
+/* minimal card */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    background: rgba(255,255,255,.98);
+    background: var(--surface);
     border: 1px solid var(--line) !important;
-    border-radius: 20px !important;
-    box-shadow: 0 10px 34px rgba(13,32,51,.045);
+    border-radius: 18px !important;
+    box-shadow: 0 10px 28px rgba(16,24,40,.045);
 }
 
-/* file uploader */
+/* upload */
 [data-testid="stFileUploaderDropzone"] {
-    background:
-        linear-gradient(180deg, #FFFFFF, #FAFCFE);
-    border: 1.6px dashed #9DB0C1;
-    border-radius: 18px;
-    padding: 1.45rem;
-}
-
-[data-testid="stFileUploaderDropzone"]:hover {
-    border-color: var(--navy-2);
-    background: #F9FBFD;
-}
-
-/* primary button */
-.stButton > button {
-    min-height: 48px;
-    border-radius: 13px;
-    font-weight: 750;
-    letter-spacing: -.01em;
-}
-
-.stButton > button[kind="primary"] {
-    background: var(--navy);
-    border-color: var(--navy);
-    color: #fff;
-    box-shadow: 0 8px 20px rgba(16,33,59,.15);
-}
-
-.stButton > button[kind="primary"]:hover {
-    background: var(--navy-2);
-    border-color: var(--navy-2);
-}
-
-/* radio controls */
-[data-testid="stRadio"] > div {
-    gap: .55rem;
-}
-[data-testid="stRadio"] label {
     background: #FFFFFF;
+    border: 1.5px dashed #C7CFDA;
+    border-radius: 16px;
+    padding: 1.5rem;
+}
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: var(--blue);
+    background: #FAFCFF;
+}
+
+/* buttons */
+.stButton > button, .stDownloadButton > button {
+    min-height: 48px;
+    border-radius: 11px;
+    font-weight: 700;
+    box-shadow: none;
+}
+.stButton > button[kind="primary"] {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
+}
+.stButton > button[kind="primary"]:hover {
+    background: var(--blue-2);
+    border-color: var(--blue-2);
+}
+
+/* radio as clean segmented cards */
+[data-testid="stRadio"] > div { gap: .55rem; }
+[data-testid="stRadio"] label {
+    background: #fff;
     border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: .58rem .82rem;
-    min-height: 42px;
+    border-radius: 11px;
+    padding: .62rem .9rem;
 }
 [data-testid="stRadio"] label:has(input:checked) {
-    border-color: var(--navy-2);
-    background: #EEF4FA;
+    border-color: #AFC7FF;
+    background: var(--blue-soft);
 }
 
-/* slider accent */
-[data-testid="stSlider"] [role="slider"] {
-    background: var(--navy-2) !important;
-}
+[data-testid="stSlider"] [role="slider"] { background: var(--blue) !important; }
 
 /* metrics */
 [data-testid="stMetric"] {
-    background: #FFFFFF;
+    background: #fff;
     border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 1rem 1.05rem;
-    box-shadow: 0 6px 22px rgba(13,32,51,.035);
+    border-radius: 14px;
+    padding: .9rem 1rem;
 }
-[data-testid="stMetricLabel"] { color: var(--muted); }
-[data-testid="stMetricValue"] { color: var(--ink); font-weight: 800; }
+[data-testid="stMetricValue"] { color: var(--text); font-weight: 760; }
 
 /* tabs */
 [data-baseweb="tab-list"] {
-    gap: .45rem;
-    background: #EAF0F5;
-    border-radius: 13px;
-    padding: .3rem;
+    gap: 1.25rem;
+    border-bottom: 1px solid var(--line);
 }
-[data-baseweb="tab"] {
-    border-radius: 10px;
-    padding: .55rem .9rem;
-}
-[aria-selected="true"][data-baseweb="tab"] {
-    background: #fff;
-    box-shadow: 0 2px 7px rgba(13,32,51,.08);
-}
+[data-baseweb="tab"] { padding: .65rem 0; }
+[aria-selected="true"][data-baseweb="tab"] { color: var(--blue); }
 
-/* alerts */
 [data-testid="stAlert"] {
-    border-radius: 14px;
+    border-radius: 12px;
+    border-width: 1px;
 }
 
-/* dataframe */
 [data-testid="stDataFrame"] {
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: 14px;
     overflow: hidden;
 }
 
-/* desktop advanced panel */
 [data-testid="stSidebar"] {
-    background: #F8FAFC;
+    background: #fff;
     border-right: 1px solid var(--line);
 }
 
-/* mobile */
+hr { border-color: var(--line) !important; }
+
 @media (max-width: 768px) {
-    .block-container {
-        padding: .8rem .85rem 3rem .85rem;
-    }
-
-    h1 {
-        font-size: 2.2rem !important;
-        line-height: 1.05 !important;
-    }
-
+    .block-container { padding: .75rem .85rem 3rem; }
+    h1 { font-size: 2.55rem !important; line-height: 1.0 !important; }
     h2 { font-size: 1.55rem !important; }
-    h3 { font-size: 1.14rem !important; }
-
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 16px !important;
-    }
-
-    [data-testid="stFileUploaderDropzone"] {
-        padding: .9rem;
-        border-radius: 14px;
-    }
-
-    [data-testid="stMetric"] {
-        padding: .78rem .85rem;
-        border-radius: 13px;
-    }
-
-    .stButton > button {
-        min-height: 50px;
-        width: 100%;
-    }
-
-    [data-testid="stRadio"] > div {
-        flex-direction: column !important;
-    }
-
-    [data-testid="stRadio"] label {
-        width: 100%;
-    }
-
-    [data-baseweb="tab-list"] {
-        overflow-x: auto;
-        white-space: nowrap;
-    }
+    h3 { font-size: 1.08rem !important; }
+    [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 15px !important; }
+    [data-testid="stFileUploaderDropzone"] { padding: 1rem; border-radius: 14px; }
+    [data-testid="stRadio"] > div { flex-direction: column !important; }
+    [data-testid="stRadio"] label { width: 100%; min-height: 46px; }
+    .stButton > button, .stDownloadButton > button { width: 100%; min-height: 50px; }
+    [data-baseweb="tab-list"] { overflow-x: auto; white-space: nowrap; gap: 1rem; }
+    [data-testid="column"] { min-width: 0 !important; }
 }
 </style>
 """,
@@ -351,162 +287,126 @@ if "inspection_id" not in st.session_state:
     st.session_state.inspection_id = None
 
 # ============================================================
-# ADVANCED SIDEBAR — optional on desktop/mobile
-# Model selection is ALSO in the main workflow so mobile users never
-# need the sidebar.
+# SIDEBAR — secondary only
 # ============================================================
 with st.sidebar:
     if ICON_PATH.exists():
-        st.image(str(ICON_PATH), width=58)
+        st.image(str(ICON_PATH), width=52)
     st.markdown("### Nepal Vehicle Inspector")
-    st.caption("Field inspection console")
+    st.caption("AI vehicle damage assessment")
     st.divider()
-    st.markdown("**About this inspection**")
-    st.caption(
-        "AI-assisted visible vehicle damage screening. Use findings as inspection evidence, "
-        "not as a substitute for mechanical or safety inspection."
-    )
-    st.divider()
-    st.markdown("**Models available**")
+    st.caption("MODEL OPTIONS")
     st.write("YOLO11m — Precision")
     st.write("YOLOv8s — Fast")
-
-# ============================================================
-# PRODUCT HEADER
-# ============================================================
-brand_col, status_col = st.columns([5, 1.2], vertical_alignment="center")
-with brand_col:
-    icon_col, name_col = st.columns([0.45, 4.8], vertical_alignment="center")
-    with icon_col:
-        if ICON_PATH.exists():
-            st.image(str(ICON_PATH), width=66)
-        else:
-            st.markdown("## 🛡️")
-    with name_col:
-        st.markdown("### Nepal Vehicle Inspector")
-        st.caption("AI-assisted exterior vehicle inspection · Build 2026.08.22b")
-with status_col:
-    st.success("SYSTEM READY")
-
-st.write("")
-
-hero_left, hero_right = st.columns([1.45, 1], gap="large", vertical_alignment="center")
-with hero_left:
-    st.caption("FIELD INSPECTION · VEHICLE DAMAGE INTELLIGENCE")
-    st.title("Inspect the vehicle.\nDocument the evidence.")
-    st.write(
-        "A field-ready visual inspection tool for identifying visible exterior damage, "
-        "reviewing model confidence and documenting every detected region."
-    )
-with hero_right:
-    with st.container(border=True):
-        st.markdown("#### Inspector protocol")
-        st.write("**01**  Capture a clear vehicle image")
-        st.write("**02**  Select the inspection model")
-        st.write("**03**  Review annotated evidence")
-        st.write("**04**  Check every confidence score")
-        st.caption("Visual screening only · Human review required")
-
-st.write("")
-
-# ============================================================
-# NEW INSPECTION
-# ============================================================
-with st.container(border=True):
-    top_left, top_right = st.columns([1.8, 1], vertical_alignment="bottom")
-    with top_left:
-        st.subheader("New vehicle inspection")
-        st.caption("Upload one exterior vehicle image. JPG, PNG or WEBP.")
-    with top_right:
-        st.caption("Inspection desk · Nepal")
-
     st.divider()
+    st.caption("Visual inspection only. Human review is recommended for safety, repair and insurance decisions.")
 
-    # IMPORTANT: model control lives in main UI for mobile access.
-    st.markdown("#### 1. Select inspection model")
-    model_choice = st.radio(
-        "Inspection model",
-        ["YOLO11m — Precision", "YOLOv8s — Fast"],
-        horizontal=True,
-        label_visibility="collapsed",
-        help="YOLO11m is recommended for the primary inspection. YOLOv8s is lighter and faster.",
+# ============================================================
+# HEADER
+# ============================================================
+brand, nav = st.columns([4, 1], vertical_alignment="center")
+with brand:
+    a, b = st.columns([0.35, 4.5], vertical_alignment="center")
+    with a:
+        if ICON_PATH.exists():
+            st.image(str(ICON_PATH), width=46)
+    with b:
+        st.markdown("### Nepal Vehicle Inspector")
+        st.caption("AI-powered vehicle damage assessment")
+with nav:
+    st.caption("INSPECTION TOOL")
+
+st.write("")
+st.write("")
+
+# ============================================================
+# HERO — simple, Chassly-inspired hierarchy
+# ============================================================
+st.caption("KNOW YOUR DAMAGE")
+st.title("See the damage.\nUnderstand the vehicle.")
+st.write(
+    "Upload a vehicle photo and get an instant AI assessment with annotated damage, "
+    "confidence scores and evidence for every detected area."
+)
+st.caption("Fast visual assessment · Two detection models · Detailed evidence")
+
+st.write("")
+st.write("")
+
+# ============================================================
+# ASSESSMENT
+# ============================================================
+st.subheader("Start an assessment")
+st.caption("One image is enough to test the current model. Use a clear, well-lit exterior photo.")
+st.write("")
+
+model_choice = st.radio(
+    "Detection model",
+    ["YOLO11m — Precision", "YOLOv8s — Fast"],
+    horizontal=True,
+    help="YOLO11m is the recommended primary model. YOLOv8s is lighter and faster.",
+)
+
+with st.expander("Detection settings", expanded=False):
+    confidence = st.slider(
+        "Confidence threshold",
+        min_value=0.10,
+        max_value=0.90,
+        value=0.25,
+        step=0.05,
+        help="Lower thresholds show more possible damage but can increase false positives.",
     )
+    st.caption(f"Current threshold: {confidence:.0%}. Confidence is model certainty, not damage severity.")
 
-    sensitivity_col, note_col = st.columns([1.4, 1], vertical_alignment="center")
-    with sensitivity_col:
-        confidence = st.slider(
-            "Detection threshold",
-            min_value=0.10,
-            max_value=0.90,
-            value=0.25,
-            step=0.05,
-            help="Lower thresholds show more possible damage but can increase false positives.",
-        )
-    with note_col:
-        st.caption(
-            f"Current threshold: **{confidence:.0%}** · "
-            "Confidence indicates model certainty, not damage severity."
-        )
+uploaded_file = st.file_uploader(
+    "Upload vehicle photo",
+    type=["jpg", "jpeg", "png", "webp"],
+    help="JPG, PNG or WEBP. Clear daylight images work best.",
+)
 
+if uploaded_file is None:
+    st.info("Upload a vehicle image to begin.")
+else:
+    image = Image.open(uploaded_file).convert("RGB")
     st.write("")
-    st.markdown("#### 2. Upload vehicle image")
-    uploaded_file = st.file_uploader(
-        "Vehicle image",
-        type=["jpg", "jpeg", "png", "webp"],
-        label_visibility="collapsed",
-        help="For best results, use a clear, well-lit image with the damaged area visible.",
-    )
+    preview, details = st.columns([1.55, 1], gap="large", vertical_alignment="center")
+    with preview:
+        st.image(image, use_container_width=True)
+    with details:
+        st.caption("READY TO ANALYZE")
+        st.subheader("Vehicle photo loaded")
+        st.write(f"**Model**  {model_choice}")
+        st.write(f"**Threshold**  {confidence:.0%}")
+        st.write(f"**Image**  {image.width} × {image.height}px")
+        st.caption("The report will include the original image, annotated output, confidence scores and cropped evidence.")
+        run = st.button("Analyze vehicle", type="primary", use_container_width=True)
 
-    if uploaded_file is None:
-        st.info(
-            "Capture or upload a clear vehicle image to start the inspection."
-        )
-    else:
-        image = Image.open(uploaded_file).convert("RGB")
-        preview_col, action_col = st.columns([1.6, 1], gap="large", vertical_alignment="center")
-        with preview_col:
-            st.image(image, caption="Vehicle submitted for inspection", use_container_width=True)
-        with action_col:
-            st.markdown("#### Ready for inspection")
-            st.write(f"**Model:** {model_choice}")
-            st.write(f"**Threshold:** {confidence:.0%}")
-            st.write(f"**Image:** {image.width} × {image.height}px")
-            st.caption(
-                "The output will include the annotated vehicle, all detections, "
-                "confidence values, evidence crops and technical details."
-            )
-            run = st.button(
-                "Run AI inspection",
-                type="primary",
-                use_container_width=True,
-            )
+    if run:
+        try:
+            if model_choice.startswith("YOLO11m"):
+                with st.spinner("Analyzing vehicle with YOLO11m..."):
+                    model = load_yolo11m()
+                    output_image, detections, scan_time = run_scan(model, image, confidence)
+                model_name = "YOLO11m"
+            else:
+                with st.spinner("Analyzing vehicle with YOLOv8s..."):
+                    model = load_yolov8()
+                    output_image, detections, scan_time = run_scan(model, image, confidence)
+                model_name = "YOLOv8s"
 
-        if run:
-            try:
-                if model_choice.startswith("YOLO11m"):
-                    with st.spinner("Inspector is analysing the vehicle with YOLO11m..."):
-                        model = load_yolo11m()
-                        output_image, detections, scan_time = run_scan(model, image, confidence)
-                    model_name = "YOLO11m"
-                else:
-                    with st.spinner("Inspector is analysing the vehicle with YOLOv8s..."):
-                        model = load_yolov8()
-                        output_image, detections, scan_time = run_scan(model, image, confidence)
-                    model_name = "YOLOv8s"
-
-                st.session_state.inspection_result = {
-                    "original": image.copy(),
-                    "annotated": output_image,
-                    "detections": detections,
-                    "scan_time": scan_time,
-                    "model_name": model_name,
-                    "threshold": confidence,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                st.session_state.inspection_source_name = uploaded_file.name
-                st.session_state.inspection_id = datetime.now().strftime("NVI-%y%m%d-%H%M%S")
-            except Exception as exc:
-                st.error(f"Inspection failed: {exc}")
+            st.session_state.inspection_result = {
+                "original": image.copy(),
+                "annotated": output_image,
+                "detections": detections,
+                "scan_time": scan_time,
+                "model_name": model_name,
+                "threshold": confidence,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            st.session_state.inspection_source_name = uploaded_file.name
+            st.session_state.inspection_id = datetime.now().strftime("NVI-%y%m%d-%H%M%S")
+        except Exception as exc:
+            st.error(f"Inspection failed: {exc}")
 
 # ============================================================
 # RESULTS
@@ -520,126 +420,108 @@ if result is not None:
     inspection_id = st.session_state.inspection_id or "NVI-SESSION"
 
     st.write("")
+    st.divider()
     st.write("")
 
-    report_title, report_status = st.columns([3, 1], vertical_alignment="center")
-    with report_title:
-        st.caption(f"INSPECTION RECORD · {inspection_id}")
-        st.header("Vehicle inspection report")
-        st.caption(
-            f"{st.session_state.inspection_source_name or 'Vehicle image'} · "
-            f"{result['timestamp']} · {result['model_name']} · threshold {result['threshold']:.0%}"
-        )
-    with report_status:
+    st.caption(f"ASSESSMENT · {inspection_id}")
+    status_col, meta_col = st.columns([2, 1], vertical_alignment="bottom")
+    with status_col:
         if detections:
-            st.warning(f"{len(detections)} finding(s)")
+            st.header(f"{len(detections)} visible damage finding{'s' if len(detections) != 1 else ''}")
+            st.caption("Review the annotated image and every evidence region below.")
         else:
-            st.success("No findings")
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Detected regions", len(detections))
-    m2.metric("Damage classes", unique_types)
-    m3.metric("Peak confidence", f"{highest:.0%}")
-    m4.metric("Inference", f"{result['scan_time']:.2f}s")
+            st.header("No visible damage detected")
+            st.caption("No detections were found above the selected confidence threshold.")
+    with meta_col:
+        st.caption(f"{result['model_name']} · {result['threshold']:.0%} threshold · {result['scan_time']:.2f}s")
 
     st.write("")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Findings", len(detections))
+    m2.metric("Damage types", unique_types)
+    m3.metric("Highest confidence", f"{highest:.0%}")
 
-    overview_tab, evidence_tab, detail_tab = st.tabs(
-        ["Inspection overview", "Evidence", "Technical record"]
-    )
+    st.write("")
+    overview_tab, evidence_tab, detail_tab = st.tabs(["Overview", "Evidence", "Details"])
 
     with overview_tab:
-        st.markdown("### Original vs AI inspection")
+        st.write("")
         before, after = st.columns(2, gap="large")
         with before:
-            st.caption("ORIGINAL VEHICLE")
+            st.caption("ORIGINAL")
             st.image(result["original"], use_container_width=True)
         with after:
-            st.caption("AI INSPECTION OUTPUT")
+            st.caption("AI ASSESSMENT")
             st.image(result["annotated"], use_container_width=True)
 
         st.write("")
-        st.markdown("### Findings summary")
+        st.subheader("Findings")
         if detections:
             summary_rows = []
             for i, d in enumerate(detections, start=1):
                 x1, y1, x2, y2 = d["box"]
-                summary_rows.append(
-                    {
-                        "ID": f"F-{i:02d}",
-                        "Damage": d["name"],
-                        "Confidence": f"{d['confidence']:.1%}",
-                        "Evidence box": f"({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f})",
-                    }
-                )
-            st.dataframe(
-                pd.DataFrame(summary_rows),
-                use_container_width=True,
-                hide_index=True,
-            )
+                summary_rows.append({
+                    "Finding": f"F-{i:02d}",
+                    "Damage": d["name"],
+                    "Confidence": f"{d['confidence']:.1%}",
+                    "Region": f"({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f})",
+                })
+            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
         else:
-            st.success(
-                "No visible damage was detected above the selected threshold."
-            )
+            st.success("No visible damage was detected above the selected threshold.")
 
     with evidence_tab:
+        st.write("")
         if not detections:
-            st.success("No evidence regions to review.")
+            st.info("No evidence regions to review.")
         else:
-            st.markdown("### Detection evidence")
-            st.caption(
-                "Every finding below shows the exact crop used as visual evidence and the model confidence."
-            )
+            st.subheader("Damage evidence")
+            st.caption("Each item shows the detected area and the model's confidence in that classification.")
+            st.write("")
             for i, d in enumerate(detections, start=1):
                 with st.container(border=True):
-                    evidence_col, info_col = st.columns([1.05, 1.35], gap="large", vertical_alignment="center")
-                    with evidence_col:
-                        st.image(d["crop"], caption=f"Evidence F-{i:02d}", use_container_width=True)
-                    with info_col:
+                    crop, info = st.columns([1, 1.35], gap="large", vertical_alignment="center")
+                    with crop:
+                        st.image(d["crop"], use_container_width=True)
+                    with info:
                         st.caption(f"FINDING F-{i:02d}")
                         st.subheader(d["name"])
-                        st.metric("Model confidence", f"{d['confidence']:.1%}")
+                        st.metric("Confidence", f"{d['confidence']:.1%}")
                         st.progress(min(max(d["confidence"], 0.0), 1.0))
                         x1, y1, x2, y2 = d["box"]
-                        st.write(f"**Detected region:** ({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f})")
-                        st.caption(
-                            "Confidence is the model's certainty about the classification. "
-                            "It does not measure repair cost, physical severity or roadworthiness."
-                        )
+                        st.caption(f"Detected region: ({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f})")
+                        st.caption("Confidence reflects model certainty; it is not a repair-cost or severity score.")
 
     with detail_tab:
-        tech_left, tech_right = st.columns(2)
-        with tech_left:
-            with st.container(border=True):
-                st.markdown("#### Inspection record")
-                st.write(f"**Inspection ID:** {inspection_id}")
-                st.write(f"**Timestamp:** {result['timestamp']}")
-                st.write(f"**Source file:** {st.session_state.inspection_source_name}")
-                st.write(f"**Image size:** {result['original'].width} × {result['original'].height}px")
-        with tech_right:
-            with st.container(border=True):
-                st.markdown("#### AI record")
-                st.write(f"**Model:** {result['model_name']}")
-                st.write(f"**Threshold:** {result['threshold']:.0%}")
-                st.write(f"**Inference time:** {result['scan_time']:.3f}s")
-                st.write(f"**Detected regions:** {len(detections)}")
+        st.write("")
+        left, right = st.columns(2, gap="large")
+        with left:
+            st.subheader("Assessment")
+            st.write(f"**Inspection ID:** {inspection_id}")
+            st.write(f"**Timestamp:** {result['timestamp']}")
+            st.write(f"**Source file:** {st.session_state.inspection_source_name}")
+            st.write(f"**Image size:** {result['original'].width} × {result['original'].height}px")
+        with right:
+            st.subheader("Model")
+            st.write(f"**Model:** {result['model_name']}")
+            st.write(f"**Threshold:** {result['threshold']:.0%}")
+            st.write(f"**Inference time:** {result['scan_time']:.3f}s")
+            st.write(f"**Detected regions:** {len(detections)}")
 
         if detections:
             export_rows = []
             for i, d in enumerate(detections, start=1):
                 x1, y1, x2, y2 = d["box"]
-                export_rows.append(
-                    {
-                        "inspection_id": inspection_id,
-                        "finding_id": f"F-{i:02d}",
-                        "damage": d["name"],
-                        "confidence": round(d["confidence"], 4),
-                        "x1": round(x1, 1),
-                        "y1": round(y1, 1),
-                        "x2": round(x2, 1),
-                        "y2": round(y2, 1),
-                    }
-                )
+                export_rows.append({
+                    "inspection_id": inspection_id,
+                    "finding_id": f"F-{i:02d}",
+                    "damage": d["name"],
+                    "confidence": round(d["confidence"], 4),
+                    "x1": round(x1, 1),
+                    "y1": round(y1, 1),
+                    "x2": round(x2, 1),
+                    "y2": round(y2, 1),
+                })
             csv_bytes = pd.DataFrame(export_rows).to_csv(index=False).encode("utf-8")
             st.download_button(
                 "Download findings CSV",
@@ -650,18 +532,16 @@ if result is not None:
             )
 
     st.write("")
-    st.warning(
-        "AI-assisted visual screening only. A qualified human inspector should review findings "
-        "before safety, valuation, repair or insurance decisions."
-    )
+    st.caption("AI-assisted visual screening only. A qualified human inspector should review findings before safety, valuation, repair or insurance decisions.")
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.write("")
+st.write("")
 st.divider()
-footer_left, footer_right = st.columns([3, 1])
-with footer_left:
-    st.caption("Nepal Vehicle Inspector · AI-assisted vehicle damage screening")
-with footer_right:
-    st.caption("Field Console v1")
+left, right = st.columns([3, 1])
+with left:
+    st.caption("Nepal Vehicle Inspector · AI-powered vehicle damage assessment")
+with right:
+    st.caption("NVI · 2026")
