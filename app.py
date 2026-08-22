@@ -1,6 +1,7 @@
-import base64
-import io
-from datetime import datetime
+import os
+import time
+import urllib.request
+from pathlib import Path
 
 import numpy as np
 import streamlit as st
@@ -14,580 +15,476 @@ from ultralytics import YOLO
 # ============================================================
 
 st.set_page_config(
-    page_title="CarDD Vision — AI Damage Scanner",
-    page_icon="🚗",
+    page_title="CarDD Vision",
+    page_icon="🚘",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
 # ============================================================
-# CSS
+# DESIGN
 # ============================================================
 
 st.markdown(
     """
-<style>
-
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
-
-:root {
-    --bg: #0E1113;
-    --panel: #171B1E;
-    --panel2: #1E2327;
-    --line: rgba(237,234,225,0.10);
-    --paper: #EDEAE1;
-    --muted: #8C949B;
-    --amber: #FFB627;
-    --amber-dim: rgba(255,182,39,0.18);
-    --red: #D7263D;
-    --red-dim: rgba(215,38,61,0.14);
-    --teal: #2EC4B6;
-    --teal-dim: rgba(46,196,182,0.14);
-}
-
-/* APP */
-
-[data-testid="stAppViewContainer"] {
-    background:
-        repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 39px,
-            var(--line) 40px
-        ),
-        repeating-linear-gradient(
-            90deg,
-            transparent,
-            transparent 39px,
-            var(--line) 40px
-        ),
-        var(--bg);
-    color: var(--paper);
-}
-
-[data-testid="stHeader"] {
-    background: transparent;
-}
-
-#MainMenu,
-footer {
-    visibility: hidden;
-}
-
-.block-container {
-    padding-top: 2rem;
-    padding-bottom: 3rem;
-    max-width: 1200px;
-}
-
-
-/* SIDEBAR */
-
-[data-testid="stSidebar"] {
-    background: var(--panel);
-    border-right: 1px solid var(--line);
-}
-
-[data-testid="stSidebar"] .block-container {
-    padding-top: 2rem;
-}
-
-
-/* TYPOGRAPHY */
-
-.eyebrow {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.70rem;
-    letter-spacing: 0.15em;
-    color: var(--amber);
-    text-transform: uppercase;
-    margin: 0 0 0.5rem 0;
-}
-
-.eyebrow-dot {
-    color: var(--amber);
-    margin-right: 7px;
-}
-
-.hero-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: clamp(2.2rem, 5vw, 3.3rem);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1;
-    margin: 0;
-}
-
-.hero-title span {
-    color: var(--amber);
-}
-
-.hero-subtitle {
-    color: var(--muted);
-    font-size: 0.95rem;
-    margin-top: 0.65rem;
-}
-
-
-/* STATUS */
-
-.status-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.70rem;
-    letter-spacing: 0.10em;
-    color: var(--teal);
-    border: 1px solid rgba(46,196,182,0.30);
-    background: rgba(46,196,182,0.05);
-    padding: 0.5rem 0.75rem;
-    border-radius: 3px;
-}
-
-.status-dot {
-    width: 7px;
-    height: 7px;
-    background: var(--teal);
-    border-radius: 50%;
-    box-shadow: 0 0 8px var(--teal);
-}
-
-
-/* SIDEBAR MODEL CARDS */
-
-.model-card {
-    background: var(--panel2);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 0.9rem;
-    margin-top: 0.7rem;
-}
-
-.model-name {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 0.95rem;
-    color: var(--paper);
-}
-
-.model-meta {
-    font-family: 'IBM Plex Mono', monospace;
-    color: var(--muted);
-    font-size: 0.65rem;
-    line-height: 1.7;
-    margin-top: 0.45rem;
-}
-
-
-/* SELECTBOX */
-
-[data-testid="stSelectbox"] label,
-[data-testid="stSlider"] label {
-    color: var(--muted) !important;
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 0.70rem !important;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-
-
-/* BUTTONS */
-
-.stButton > button {
-    background: var(--amber);
-    color: #171100;
-    font-family: 'IBM Plex Mono', monospace;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    font-size: 0.80rem;
-    border: none;
-    border-radius: 3px;
-    padding: 0.85rem 1rem;
-}
-
-.stButton > button:hover {
-    background: var(--amber);
-    color: #171100;
-    box-shadow:
-        0 0 0 3px var(--amber-dim),
-        0 0 25px var(--amber-dim);
-}
-
-
-/* UPLOADER */
-
-[data-testid="stFileUploaderDropzone"] {
-    background: var(--panel);
-    border: 1.5px dashed rgba(255,182,39,0.40);
-    border-radius: 5px;
-}
-
-[data-testid="stFileUploaderDropzone"] button {
-    background: transparent !important;
-    border: 1px solid var(--amber) !important;
-    color: var(--amber) !important;
-}
-
-[data-testid="stFileUploaderDropzone"] small,
-[data-testid="stFileUploaderDropzone"] span {
-    color: var(--muted) !important;
-}
-
-[data-testid="stFileUploaderDropzone"] svg {
-    color: var(--amber) !important;
-}
-
-
-/* VIEWFINDER */
-
-.frame-label {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.68rem;
-    letter-spacing: 0.14em;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 0.55rem;
-}
-
-.viewfinder {
-    position: relative;
-    padding: 10px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    overflow: hidden;
-    border-radius: 4px;
-}
-
-.viewfinder img {
-    width: 100%;
-    display: block;
-    border-radius: 2px;
-}
-
-.corner {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border-color: var(--amber);
-    z-index: 2;
-}
-
-.corner-tl {
-    top: 6px;
-    left: 6px;
-    border-top: 2px solid;
-    border-left: 2px solid;
-}
-
-.corner-tr {
-    top: 6px;
-    right: 6px;
-    border-top: 2px solid;
-    border-right: 2px solid;
-}
-
-.corner-bl {
-    bottom: 6px;
-    left: 6px;
-    border-bottom: 2px solid;
-    border-left: 2px solid;
-}
-
-.corner-br {
-    bottom: 6px;
-    right: 6px;
-    border-bottom: 2px solid;
-    border-right: 2px solid;
-}
-
-
-/* READY BOX */
-
-.ready-box {
-    min-height: 260px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    background: var(--panel);
-    border: 1px dashed var(--line);
-    border-radius: 4px;
-    padding: 2rem;
-}
-
-.ready-icon {
-    font-size: 3rem;
-    margin-bottom: 0.7rem;
-}
-
-.ready-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--paper);
-}
-
-.ready-text {
-    color: var(--muted);
-    font-size: 0.78rem;
-    margin-top: 0.4rem;
-}
-
-
-/* METRICS */
-
-.metric-card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 1rem;
-    text-align: center;
-}
-
-.metric-icon {
-    font-size: 1.2rem;
-}
-
-.metric-value {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    margin-top: 0.2rem;
-    color: var(--paper);
-}
-
-.metric-label {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.62rem;
-    letter-spacing: 0.10em;
-    color: var(--muted);
-    text-transform: uppercase;
-}
-
-
-/* DAMAGE REPORT */
-
-.report-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 1.2rem;
-    margin: 0.8rem 0;
-}
-
-.ticket {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-left: 3px solid var(--red);
-    padding: 0.75rem 1rem;
-    margin-bottom: 0.55rem;
-    border-radius: 2px;
-}
-
-.ticket-name {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    min-width: 150px;
-    color: var(--paper);
-}
-
-.bar-track {
-    flex: 1;
-    height: 6px;
-    background: var(--panel2);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.bar-fill {
-    height: 100%;
-    background: var(--red);
-}
-
-.score {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--muted);
-    min-width: 55px;
-    text-align: right;
-}
-
-.confidence-badge {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.60rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 2px;
-    min-width: 42px;
-    text-align: center;
-}
-
-.high {
-    color: var(--teal);
-    background: var(--teal-dim);
-}
-
-.medium {
-    color: var(--amber);
-    background: var(--amber-dim);
-}
-
-.low {
-    color: var(--muted);
-    background: rgba(140,148,155,0.12);
-}
-
-
-/* SUMMARY CARD */
-
-.summary-card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 4px;
-    padding: 1rem;
-}
-
-.summary-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    color: var(--paper);
-    margin-bottom: 0.35rem;
-}
-
-.summary-text {
-    color: var(--muted);
-    font-size: 0.78rem;
-    line-height: 1.6;
-}
-
-
-/* CLEAR RESULT */
-
-.clear-banner {
-    font-family: 'IBM Plex Mono', monospace;
-    background: var(--teal-dim);
-    border: 1px solid rgba(46,196,182,0.35);
-    color: var(--teal);
-    padding: 1rem;
-    border-radius: 3px;
-    line-height: 1.6;
-}
-
-
-/* DIVIDER */
-
-hr {
-    border-color: var(--line) !important;
-}
-
-
-/* FOOTER */
-
-.footer-strip {
-    margin-top: 2.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--line);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.65rem;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    line-height: 1.8;
-}
-
-
-/* MOBILE */
-
-@media (max-width: 768px) {
+    <style>
+
+    @import url(
+        'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&
+        family=Manrope:wght@500;600;700;800&display=swap'
+    );
+
+    :root {
+        --bg: #F6F7F9;
+        --surface: #FFFFFF;
+        --surface-soft: #F0F2F5;
+        --text: #101828;
+        --muted: #667085;
+        --border: #E4E7EC;
+        --dark: #111827;
+        --blue: #2563EB;
+        --blue-soft: #EFF6FF;
+        --orange: #F97316;
+        --orange-soft: #FFF7ED;
+        --green: #16A34A;
+        --green-soft: #F0FDF4;
+        --red: #DC2626;
+    }
+
+    html, body, [class*="css"] {
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    .stApp {
+        background: var(--bg);
+        color: var(--text);
+    }
+
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    #MainMenu,
+    footer {
+        visibility: hidden;
+    }
 
     .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
+        max-width: 1250px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
     }
 
-    .ticket {
-        flex-wrap: wrap;
+
+    /* SIDEBAR */
+
+    [data-testid="stSidebar"] {
+        background: #FFFFFF;
+        border-right: 1px solid var(--border);
     }
 
-    .ticket-name {
-        min-width: 100%;
+    [data-testid="stSidebar"] .block-container {
+        padding-top: 1.5rem;
     }
 
-    .bar-track {
-        flex-basis: 100%;
+
+    /* BRAND */
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 2rem;
+    }
+
+    .brand-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        background: var(--dark);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+    }
+
+    .brand-title {
+        font-family: 'Manrope', sans-serif;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--dark);
+        line-height: 1.1;
+    }
+
+    .brand-sub {
+        color: var(--muted);
+        font-size: 0.72rem;
+        margin-top: 2px;
+    }
+
+
+    /* HERO */
+
+    .hero {
+        background:
+            radial-gradient(
+                circle at 85% 20%,
+                rgba(37,99,235,0.16),
+                transparent 28%
+            ),
+            var(--dark);
+
+        color: white;
+        padding: 3.2rem;
+        border-radius: 24px;
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .hero::after {
+        content: "";
+        position: absolute;
+        width: 260px;
+        height: 260px;
+        border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.08);
+        right: -80px;
+        bottom: -130px;
+    }
+
+    .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #93C5FD;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 1rem;
+    }
+
+    .eyebrow-dot {
+        width: 8px;
+        height: 8px;
+        background: #60A5FA;
+        border-radius: 50%;
+        box-shadow: 0 0 12px #60A5FA;
+    }
+
+    .hero h1 {
+        font-family: 'Manrope', sans-serif;
+        font-size: clamp(2.4rem, 5vw, 4.2rem);
+        font-weight: 800;
+        line-height: 1.05;
+        margin: 0;
+        max-width: 720px;
+        letter-spacing: -0.04em;
+    }
+
+    .hero h1 span {
+        color: #60A5FA;
+    }
+
+    .hero p {
+        color: #B8C1D1;
+        font-size: 1.05rem;
+        line-height: 1.7;
+        max-width: 620px;
+        margin-top: 1.2rem;
+        margin-bottom: 0;
+    }
+
+
+    /* SECTION */
+
+    .section-label {
+        font-size: 0.78rem;
+        font-weight: 800;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.7rem;
+    }
+
+
+    /* CARDS */
+
+    .info-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 1.3rem;
+        height: 100%;
+    }
+
+    .info-icon {
+        font-size: 1.45rem;
+        margin-bottom: 0.7rem;
+    }
+
+    .info-title {
+        font-family: 'Manrope', sans-serif;
+        font-weight: 700;
+        font-size: 0.95rem;
+        margin-bottom: 0.35rem;
+        color: var(--text);
+    }
+
+    .info-text {
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.55;
+    }
+
+
+    /* RESULT HEADER */
+
+    .result-hero {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 22px;
+        padding: 1.7rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .result-title {
+        font-family: 'Manrope', sans-serif;
+        font-size: 1.65rem;
+        font-weight: 800;
+        margin: 0;
+        color: var(--dark);
+    }
+
+    .result-sub {
+        color: var(--muted);
+        margin-top: 0.35rem;
+        font-size: 0.9rem;
+    }
+
+
+    /* METRICS */
+
+    .metric-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 1.25rem;
+        height: 100%;
+    }
+
+    .metric-label {
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+    }
+
+    .metric-value {
+        font-family: 'Manrope', sans-serif;
+        color: var(--dark);
+        font-size: 1.7rem;
+        font-weight: 800;
+        margin-top: 0.4rem;
+    }
+
+    .metric-note {
+        color: var(--muted);
+        font-size: 0.76rem;
+        margin-top: 0.2rem;
+    }
+
+
+    /* FINDING CARDS */
+
+    .finding {
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 1.2rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .finding-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .finding-name {
+        font-family: 'Manrope', sans-serif;
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--dark);
+    }
+
+    .confidence-pill {
+        background: var(--blue-soft);
+        color: var(--blue);
+        border-radius: 999px;
+        padding: 0.32rem 0.65rem;
+        font-size: 0.75rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .progress-track {
+        height: 7px;
+        background: #EEF0F3;
+        border-radius: 99px;
+        overflow: hidden;
+        margin-top: 0.8rem;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(
+            90deg,
+            #2563EB,
+            #60A5FA
+        );
+        border-radius: 99px;
+    }
+
+    .finding-note {
+        color: var(--muted);
+        font-size: 0.78rem;
+        margin-top: 0.65rem;
+    }
+
+
+    /* IMAGE CONTAINER */
+
+    .image-label {
+        font-family: 'Manrope', sans-serif;
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--dark);
+        margin-bottom: 0.6rem;
+    }
+
+
+    /* STATUS */
+
+    .status-good {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        background: var(--green-soft);
+        color: var(--green);
+        padding: 0.42rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 800;
+    }
+
+    .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+    }
+
+
+    /* UPLOADER */
+
+    [data-testid="stFileUploaderDropzone"] {
+        background: white;
+        border: 2px dashed #CBD5E1;
+        border-radius: 20px;
+        padding: 2rem;
+    }
+
+    [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: var(--blue);
+        background: #FAFCFF;
+    }
+
+
+    /* BUTTON */
+
+    .stButton > button {
         width: 100%;
+        background: var(--dark);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+        font-family: 'Manrope', sans-serif;
+        font-weight: 700;
+        transition: all 0.2s ease;
     }
 
-    .score {
-        min-width: auto;
+    .stButton > button:hover {
+        background: var(--blue);
+        border: none;
+        transform: translateY(-1px);
     }
 
-}
 
-</style>
-""",
+    /* IMAGE */
+
+    [data-testid="stImage"] img {
+        border-radius: 16px;
+    }
+
+
+    /* MOBILE */
+
+    @media (max-width: 768px) {
+
+        .hero {
+            padding: 2rem 1.4rem;
+            border-radius: 18px;
+        }
+
+        .hero h1 {
+            font-size: 2.4rem;
+        }
+
+        .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+
+    }
+
+    </style>
+    """,
     unsafe_allow_html=True,
 )
-
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
-def image_to_data_uri(img: Image.Image) -> str:
-    """Convert a PIL image into a browser-displayable data URI."""
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    encoded = base64.b64encode(buffer.getvalue()).decode()
-    return f"data:image/png;base64,{encoded}"
-
-
-def render_frame(img: Image.Image, label: str):
-    """Display an image inside the diagnostic frame."""
-    uri = image_to_data_uri(img)
-
-    html = (
-        '<div class="frame-label">'
-        + label
-        + '</div>'
-        + '<div class="viewfinder">'
-        + '<span class="corner corner-tl"></span>'
-        + '<span class="corner corner-tr"></span>'
-        + '<span class="corner corner-bl"></span>'
-        + '<span class="corner corner-br"></span>'
-        + f'<img src="{uri}" />'
-        + '</div>'
-    )
-
-    st.markdown(html, unsafe_allow_html=True)
-
-
-def confidence_level(score: float):
-    if score >= 0.75:
-        return "HIGH", "high"
-    if score >= 0.50:
-        return "MED", "medium"
-    return "LOW", "low"
-
-
-def load_selected_model(model_choice: str):
-    if "YOLOv8" in model_choice:
-        return load_yolov8()
-
-    return load_yolo11()
 
 
 # ============================================================
 # MODEL LOADERS
 # ============================================================
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
+def load_yolo11m():
+
+    model_dir = Path.home() / ".cache" / "cardd_vision"
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = model_dir / "yolo11m_car_damage.pt"
+
+    if not model_path.exists():
+
+        urllib.request.urlretrieve(
+            "https://github.com/ReverendBayes/"
+            "YOLO11m-Car-Damage-Detector/"
+            "raw/main/trained.pt",
+            str(model_path),
+        )
+
+    return YOLO(str(model_path))
+
+
+@st.cache_resource(show_spinner=False)
 def load_yolov8():
 
     model_path = hf_hub_download(
@@ -598,141 +495,318 @@ def load_yolov8():
     return YOLO(model_path)
 
 
-@st.cache_resource
-def load_yolo11():
-
-    model_path = hf_hub_download(
-        repo_id="harpreetsahota/car-dd-segmentation-yolov11",
-        filename="best.pt",
-    )
-
-    return YOLO(model_path)
-
-
 # ============================================================
-# HERO
+# HELPER FUNCTIONS
 # ============================================================
 
-hero_left, hero_right = st.columns([4, 1])
+def clean_damage_name(name):
 
-with hero_left:
+    replacements = {
+        "glass_shatter": "Shattered Glass",
+        "shattered_glass": "Shattered Glass",
+        "lamp_broken": "Broken Lamp",
+        "broken_lamp": "Broken Lamp",
+        "tire_flat": "Flat Tire",
+        "flat_tire": "Flat Tire",
+    }
 
-    st.markdown(
-        '<div class="eyebrow">'
-        '<span class="eyebrow-dot">●</span>'
-        'AI Automotive Diagnostics'
-        '</div>',
-        unsafe_allow_html=True,
+    name = str(name).lower().strip()
+
+    if name in replacements:
+        return replacements[name]
+
+    return name.replace("_", " ").title()
+
+
+def get_damage_crop(image, xyxy, padding=35):
+
+    x1, y1, x2, y2 = map(int, xyxy)
+
+    width, height = image.size
+
+    x1 = max(0, x1 - padding)
+    y1 = max(0, y1 - padding)
+
+    x2 = min(width, x2 + padding)
+    y2 = min(height, y2 + padding)
+
+    return image.crop((x1, y1, x2, y2))
+
+
+def run_scan(model, image, confidence):
+
+    start_time = time.perf_counter()
+
+    results = model.predict(
+        source=np.array(image),
+        conf=confidence,
+        verbose=False,
     )
 
-    st.markdown(
-        '<div class="hero-title">'
-        'CarDD <span>Vision</span>'
-        '</div>',
-        unsafe_allow_html=True,
+    scan_time = time.perf_counter() - start_time
+
+    result = results[0]
+
+    plotted = result.plot()
+
+    output_image = Image.fromarray(
+        plotted[:, :, ::-1]
     )
 
-    st.markdown(
-        '<div class="hero-subtitle">'
-        'AI-powered vehicle damage detection & visual inspection.'
-        '</div>',
-        unsafe_allow_html=True,
+    detections = []
+
+    if result.boxes is not None:
+
+        for box in result.boxes:
+
+            class_id = int(box.cls[0])
+            score = float(box.conf[0])
+
+            damage_name = clean_damage_name(
+                model.names[class_id]
+            )
+
+            xyxy = box.xyxy[0].tolist()
+
+            crop = get_damage_crop(
+                image,
+                xyxy
+            )
+
+            detections.append(
+                {
+                    "name": damage_name,
+                    "confidence": score,
+                    "crop": crop,
+                    "box": xyxy,
+                }
+            )
+
+    detections = sorted(
+        detections,
+        key=lambda x: x["confidence"],
+        reverse=True,
     )
 
-with hero_right:
-
-    st.markdown(
-        '<div style="text-align:right;margin-top:1rem;">'
-        '<div class="status-chip">'
-        '<span class="status-dot"></span>'
-        'SYSTEM ONLINE'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    return output_image, detections, scan_time
 
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 
-st.sidebar.markdown(
-    '<div class="eyebrow">'
-    '<span class="eyebrow-dot">●</span>'
-    'Scanner Settings'
-    '</div>',
+with st.sidebar:
+
+    st.markdown(
+        """
+        <div class="brand">
+            <div class="brand-icon">🚘</div>
+
+            <div>
+                <div class="brand-title">
+                    CarDD Vision
+                </div>
+
+                <div class="brand-sub">
+                    AI VEHICLE INSPECTION
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="section-label">Inspection mode</div>',
+        unsafe_allow_html=True,
+    )
+
+    model_choice = st.radio(
+        "Model",
+        [
+            "🔬 YOLO11m — Recommended",
+            "⚡ YOLOv8s — Fast Scan",
+        ],
+        label_visibility="collapsed",
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    st.markdown(
+        '<div class="section-label">Detection sensitivity</div>',
+        unsafe_allow_html=True,
+    )
+
+    confidence = st.slider(
+        "Confidence threshold",
+        min_value=0.10,
+        max_value=0.90,
+        value=0.25,
+        step=0.05,
+        label_visibility="collapsed",
+    )
+
+    st.caption(
+        f"Current threshold: {confidence:.0%}"
+    )
+
+    st.markdown("---")
+
+    if "YOLO11m" in model_choice:
+
+        st.markdown(
+            """
+            <div class="info-card">
+
+                <div class="info-icon">🔬</div>
+
+                <div class="info-title">
+                    Recommended
+                </div>
+
+                <div class="info-text">
+                    Balanced detection model for
+                    dents, scratches, cracks,
+                    broken lamps, shattered glass
+                    and flat tires.
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    else:
+
+        st.markdown(
+            """
+            <div class="info-card">
+
+                <div class="info-icon">⚡</div>
+
+                <div class="info-title">
+                    Fast Scan
+                </div>
+
+                <div class="info-text">
+                    Lightweight segmentation model
+                    for quicker vehicle inspection.
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+# ============================================================
+# HERO
+# ============================================================
+
+st.markdown(
+    """
+    <div class="hero">
+
+        <div class="eyebrow">
+            <span class="eyebrow-dot"></span>
+            AI-powered vehicle inspection
+        </div>
+
+        <h1>
+            See the damage.<br>
+            <span>Understand the vehicle.</span>
+        </h1>
+
+        <p>
+            Upload a vehicle photo and let CarDD Vision
+            identify visible damage in seconds.
+            Review the inspection, detected areas and
+            confidence for every finding.
+        </p>
+
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-model_choice = st.sidebar.selectbox(
-    "Detection model",
-    [
-        "⚡ YOLOv8s — Fast",
-        "🎯 YOLO11 — Advanced",
-    ],
-)
 
-confidence = st.sidebar.slider(
-    "Confidence threshold",
-    min_value=0.10,
-    max_value=0.90,
-    value=0.25,
-    step=0.05,
-)
+# ============================================================
+# HOW IT WORKS
+# ============================================================
 
-st.sidebar.markdown(
-    '<div class="model-card">'
-    '<div class="model-name">⚡ YOLOv8s</div>'
-    '<div class="model-meta">'
-    'SPEED OPTIMIZED<br>'
-    'CarDD trained<br>'
-    'Fast inference'
-    '</div>'
-    '</div>',
-    unsafe_allow_html=True,
-)
+col1, col2, col3 = st.columns(3)
 
-st.sidebar.markdown(
-    '<div class="model-card">'
-    '<div class="model-name">🎯 YOLO11</div>'
-    '<div class="model-meta">'
-    'ADVANCED MODEL<br>'
-    'CarDD trained<br>'
-    'Instance segmentation'
-    '</div>'
-    '</div>',
-    unsafe_allow_html=True,
-)
+with col1:
 
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="info-card">
 
-st.sidebar.link_button(
-    "🔗 YOLOv8 — Hugging Face",
-    "https://huggingface.co/abdullahg7/cardd-yolov8s",
-)
+            <div class="info-icon">📸</div>
 
-st.sidebar.link_button(
-    "🔗 YOLO11 — Hugging Face",
-    "https://huggingface.co/harpreetsahota/car-dd-segmentation-yolov11",
-)
+            <div class="info-title">
+                01 — Upload
+            </div>
 
-st.sidebar.markdown(
-    '<div style="'
-    'margin-top:1rem;'
-    'padding:0.8rem;'
-    'background:#1E2327;'
-    'border:1px solid rgba(237,234,225,0.10);'
-    'font-family:IBM Plex Mono,monospace;'
-    'font-size:0.65rem;'
-    'color:#8C949B;'
-    'line-height:1.8;'
-    '">'
-    f'MODEL&nbsp;&nbsp;&nbsp; {model_choice.split(" — ")[0]}<br>'
-    f'THRESH&nbsp;&nbsp; {confidence:.2f}<br>'
-    'ENGINE&nbsp;&nbsp;&nbsp; CarDD Vision'
-    '</div>',
-    unsafe_allow_html=True,
-)
+            <div class="info-text">
+                Add a clear photo of the vehicle.
+                Exterior damage works best when
+                visible and well lit.
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with col2:
+
+    st.markdown(
+        """
+        <div class="info-card">
+
+            <div class="info-icon">🧠</div>
+
+            <div class="info-title">
+                02 — AI Inspection
+            </div>
+
+            <div class="info-text">
+                The selected vision model scans
+                the image for visible damage
+                patterns.
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with col3:
+
+    st.markdown(
+        """
+        <div class="info-card">
+
+            <div class="info-icon">🔍</div>
+
+            <div class="info-title">
+                03 — Review
+            </div>
+
+            <div class="info-text">
+                Compare the original image,
+                inspection output and individual
+                damage evidence.
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+st.markdown("<br><br>", unsafe_allow_html=True)
 
 
 # ============================================================
@@ -740,353 +814,483 @@ st.sidebar.markdown(
 # ============================================================
 
 st.markdown(
-    '<div class="eyebrow">'
-    '<span class="eyebrow-dot">●</span>'
-    '01 — Vehicle Image'
-    '</div>',
+    '<div class="section-label">Start an inspection</div>',
     unsafe_allow_html=True,
 )
 
 uploaded_file = st.file_uploader(
-    "Upload a vehicle image",
+    "Upload vehicle image",
     type=["jpg", "jpeg", "png", "webp"],
-    label_visibility="collapsed",
 )
 
 
 # ============================================================
-# NO IMAGE
+# BEFORE SCAN
 # ============================================================
 
 if uploaded_file is None:
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
     st.markdown(
-        '<div class="ready-box">'
-        '<div class="ready-icon">🚗</div>'
-        '<div class="ready-title">Vehicle scanner ready</div>'
-        '<div class="ready-text">'
-        'Upload a vehicle image to begin AI inspection.'
-        '</div>'
-        '</div>',
+        """
+        <div class="info-card"
+             style="text-align:center;padding:2.5rem;">
+
+            <div style="font-size:2.3rem;margin-bottom:0.8rem;">
+                🚗
+            </div>
+
+            <div class="info-title"
+                 style="font-size:1.15rem;">
+                Ready for inspection
+            </div>
+
+            <div class="info-text"
+                 style="max-width:460px;margin:0.6rem auto 0;">
+                Upload a clear image of a vehicle to begin
+                the AI-powered damage inspection.
+            </div>
+
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
 
 # ============================================================
-# IMAGE UPLOADED
+# IMAGE LOADED
 # ============================================================
 
 else:
 
     image = Image.open(uploaded_file).convert("RGB")
 
-    st.markdown(
-        '<div style="'
-        'font-family:IBM Plex Mono,monospace;'
-        'font-size:0.65rem;'
-        'color:#2EC4B6;'
-        'margin:0.6rem 0 0.8rem 0;'
-        '">'
-        '● IMAGE RECEIVED'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    input_col, output_col = st.columns(
-        2,
-        gap="large",
-    )
-
-    with input_col:
-
-        render_frame(
-            image,
-            "📷 Input Feed",
-        )
-
-    with output_col:
-
-        st.markdown(
-            '<div class="frame-label">🤖 AI Analysis</div>'
-            '<div class="ready-box">'
-            '<div class="ready-icon">🔍</div>'
-            '<div class="ready-title">Ready for scan</div>'
-            '<div class="ready-text">'
-            'Select your model and run the diagnostic.'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
     st.markdown("<br>", unsafe_allow_html=True)
 
-    run_scan = st.button(
-        "🔍  RUN DIAGNOSTIC SCAN",
-        use_container_width=True,
-    )
+    preview_col1, preview_col2 = st.columns([1.45, 1])
 
-    # ========================================================
-    # RUN MODEL
-    # ========================================================
-
-    if run_scan:
-
-        start_time = datetime.now()
-
-        with st.spinner(
-            f"Running {model_choice.split(' — ')[0]}..."
-        ):
-
-            model = load_selected_model(model_choice)
-
-            results = model.predict(
-                source=np.array(image),
-                conf=confidence,
-                verbose=False,
-            )
-
-            plotted = results[0].plot()
-
-            result_image = Image.fromarray(
-                plotted[:, :, ::-1]
-            )
-
-        processing_time = (
-            datetime.now() - start_time
-        ).total_seconds()
-
-        boxes = results[0].boxes
-
-        # ====================================================
-        # OUTPUT
-        # ====================================================
-
-        st.divider()
+    with preview_col1:
 
         st.markdown(
-            '<div class="eyebrow">'
-            '<span class="eyebrow-dot">●</span>'
-            '02 — Detection Output'
-            '</div>',
+            '<div class="image-label">Vehicle photo</div>',
             unsafe_allow_html=True,
         )
 
-        result_col, summary_col = st.columns(
-            2,
-            gap="large",
+        st.image(
+            image,
+            use_container_width=True,
         )
 
-        with result_col:
+    with preview_col2:
 
-            render_frame(
-                result_image,
-                "🎯 Annotated Detection",
+        st.markdown(
+            """
+            <div class="info-card"
+                 style="height:auto;">
+
+                <div class="info-icon">
+                    🚘
+                </div>
+
+                <div class="info-title"
+                     style="font-size:1.15rem;">
+                    Ready to inspect
+                </div>
+
+                <div class="info-text"
+                     style="margin-top:0.6rem;">
+
+                    CarDD Vision will scan this image
+                    for visible dents, scratches,
+                    cracks, broken lamps,
+                    shattered glass and flat tires.
+
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        scan_button = st.button(
+            "🔍 Start AI Inspection",
+            use_container_width=True,
+        )
+
+
+    # ========================================================
+    # RUN SCAN
+    # ========================================================
+
+    if scan_button:
+
+        if "YOLO11m" in model_choice:
+
+            model_name = "YOLO11m"
+            loading_message = "Loading YOLO11m and inspecting vehicle..."
+
+            with st.spinner(loading_message):
+
+                model = load_yolo11m()
+
+                output_image, detections, scan_time = run_scan(
+                    model,
+                    image,
+                    confidence,
+                )
+
+        else:
+
+            model_name = "YOLOv8s"
+
+            with st.spinner(
+                "Running fast vehicle inspection..."
+            ):
+
+                model = load_yolov8()
+
+                output_image, detections, scan_time = run_scan(
+                    model,
+                    image,
+                    confidence,
+                )
+
+
+        # ====================================================
+        # RESULT HEADER
+        # ====================================================
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        st.markdown(
+            f"""
+            <div class="result-hero">
+
+                <div class="status-good">
+                    <span class="status-dot"></span>
+                    INSPECTION COMPLETE
+                </div>
+
+                <div class="result-title"
+                     style="margin-top:1rem;">
+                    Vehicle inspection report
+                </div>
+
+                <div class="result-sub">
+                    {model_name} analysed the uploaded image
+                    using a {confidence:.0%} confidence threshold.
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+        # ====================================================
+        # METRICS
+        # ====================================================
+
+        highest_confidence = (
+            max(
+                [d["confidence"] for d in detections],
+                default=0
             )
+        )
 
-        with summary_col:
+        unique_damage_types = len(
+            set(
+                d["name"]
+                for d in detections
+            )
+        )
+
+        metric1, metric2, metric3, metric4 = st.columns(4)
+
+        with metric1:
 
             st.markdown(
-                '<div class="frame-label">📊 Scan Summary</div>',
+                f"""
+                <div class="metric-card">
+
+                    <div class="metric-label">
+                        Findings
+                    </div>
+
+                    <div class="metric-value">
+                        {len(detections)}
+                    </div>
+
+                    <div class="metric-note">
+                        Total detected regions
+                    </div>
+
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
-            if boxes is not None and len(boxes) > 0:
+        with metric2:
 
-                detection_count = len(boxes)
+            st.markdown(
+                f"""
+                <div class="metric-card">
 
-                scores = [
-                    float(box.conf[0])
-                    for box in boxes
-                ]
+                    <div class="metric-label">
+                        Damage types
+                    </div>
 
-                average_confidence = (
-                    sum(scores) / len(scores)
+                    <div class="metric-value">
+                        {unique_damage_types}
+                    </div>
+
+                    <div class="metric-note">
+                        Unique categories detected
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with metric3:
+
+            st.markdown(
+                f"""
+                <div class="metric-card">
+
+                    <div class="metric-label">
+                        Highest confidence
+                    </div>
+
+                    <div class="metric-value">
+                        {highest_confidence:.0%}
+                    </div>
+
+                    <div class="metric-note">
+                        Strongest model prediction
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with metric4:
+
+            st.markdown(
+                f"""
+                <div class="metric-card">
+
+                    <div class="metric-label">
+                        Scan time
+                    </div>
+
+                    <div class="metric-value">
+                        {scan_time:.2f}s
+                    </div>
+
+                    <div class="metric-note">
+                        Model inference time
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+        # ====================================================
+        # BEFORE / AFTER
+        # ====================================================
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        before_col, after_col = st.columns(2)
+
+        with before_col:
+
+            st.markdown(
+                '<div class="image-label">📷 Original vehicle</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.image(
+                image,
+                use_container_width=True,
+            )
+
+        with after_col:
+
+            st.markdown(
+                '<div class="image-label">✨ AI inspection output</div>',
+                unsafe_allow_html=True,
+            )
+
+            st.image(
+                output_image,
+                use_container_width=True,
+            )
+
+
+        # ====================================================
+        # DAMAGE FINDINGS
+        # ====================================================
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        st.markdown(
+            '<div class="section-label">Detected damage evidence</div>',
+            unsafe_allow_html=True,
+        )
+
+
+        if detections:
+
+            st.markdown(
+                """
+                <div style="
+                    font-family:'Manrope',sans-serif;
+                    font-size:1.55rem;
+                    font-weight:800;
+                    margin-bottom:0.4rem;
+                ">
+                    Review each finding
+                </div>
+
+                <div style="
+                    color:#667085;
+                    font-size:0.9rem;
+                    margin-bottom:1.4rem;
+                ">
+                    Each card shows the exact image region
+                    identified by the model.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+            for index, detection in enumerate(
+                detections,
+                start=1,
+            ):
+
+                finding_col, crop_col = st.columns(
+                    [1.3, 1]
                 )
 
-                damage_types = []
-
-                for box in boxes:
-
-                    class_id = int(box.cls[0])
-
-                    damage_name = (
-                        model.names[class_id]
-                        .replace("_", " ")
-                        .title()
-                    )
-
-                    if damage_name not in damage_types:
-                        damage_types.append(damage_name)
-
-                metric_col1, metric_col2 = st.columns(2)
-
-                with metric_col1:
+                with finding_col:
 
                     st.markdown(
-                        f'<div class="metric-card">'
-                        f'<div class="metric-icon">⚠️</div>'
-                        f'<div class="metric-value">'
-                        f'{detection_count}'
-                        f'</div>'
-                        f'<div class="metric-label">'
-                        f'Detections'
-                        f'</div>'
-                        f'</div>',
+                        f"""
+                        <div class="finding">
+
+                            <div class="finding-header">
+
+                                <div>
+
+                                    <div class="finding-name">
+                                        {index:02d}. {detection["name"]}
+                                    </div>
+
+                                </div>
+
+                                <div class="confidence-pill">
+                                    {detection["confidence"]:.0%} confidence
+                                </div>
+
+                            </div>
+
+                            <div class="progress-track">
+
+                                <div
+                                    class="progress-fill"
+                                    style="
+                                        width:
+                                        {detection["confidence"] * 100:.0f}%;
+                                    ">
+                                </div>
+
+                            </div>
+
+                            <div class="finding-note">
+                                AI detected this region as
+                                <b>{detection["name"].lower()}</b>.
+                                Confidence represents the model's
+                                certainty in the classification,
+                                not the physical severity or repair cost.
+                            </div>
+
+                        </div>
+                        """,
                         unsafe_allow_html=True,
                     )
 
-                with metric_col2:
+                with crop_col:
 
-                    st.markdown(
-                        f'<div class="metric-card">'
-                        f'<div class="metric-icon">🎯</div>'
-                        f'<div class="metric-value">'
-                        f'{average_confidence:.0%}'
-                        f'</div>'
-                        f'<div class="metric-label">'
-                        f'Avg Confidence'
-                        f'</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
+                    st.image(
+                        detection["crop"],
+                        caption=f"Detected region {index}",
+                        use_container_width=True,
                     )
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                st.markdown(
-                    '<div class="summary-card">'
-                    '<div class="summary-title">'
-                    '🔧 Damage Categories'
-                    '</div>'
-                    '<div class="summary-text">'
-                    + ", ".join(damage_types)
-                    + '</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
 
-            else:
-
-                st.markdown(
-                    '<div class="clear-banner">'
-                    '✓ NO DAMAGE DETECTED'
-                    '<br><br>'
-                    'No damage was identified above the '
-                    'selected confidence threshold.'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ====================================================
-        # DAMAGE REPORT
-        # ====================================================
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        st.markdown(
-            '<div class="eyebrow">'
-            '<span class="eyebrow-dot">●</span>'
-            '03 — Detection Report'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        if boxes is not None and len(boxes) > 0:
+        else:
 
             st.markdown(
-                '<div class="report-title">'
-                '🔧 Detected Findings'
-                '</div>',
+                """
+                <div class="info-card"
+                     style="
+                        text-align:center;
+                        padding:2.5rem;
+                        border-color:#BBF7D0;
+                     ">
+
+                    <div style="font-size:2.5rem;">
+                        ✅
+                    </div>
+
+                    <div class="info-title"
+                         style="
+                            font-size:1.2rem;
+                            margin-top:0.7rem;
+                         ">
+                        No visible damage detected
+                    </div>
+
+                    <div class="info-text"
+                         style="
+                            max-width:520px;
+                            margin:0.6rem auto;
+                         ">
+
+                        The selected model did not identify
+                        any damage above the selected confidence
+                        threshold.
+
+                    </div>
+
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
 
-            for box in boxes:
-
-                class_id = int(box.cls[0])
-                score = float(box.conf[0])
-
-                damage_type = (
-                    model.names[class_id]
-                    .replace("_", " ")
-                    .title()
-                )
-
-                level, level_class = confidence_level(score)
-
-                st.markdown(
-                    '<div class="ticket">'
-                    f'<span class="confidence-badge {level_class}">'
-                    f'{level}'
-                    '</span>'
-                    f'<span class="ticket-name">'
-                    f'{damage_type}'
-                    '</span>'
-                    '<div class="bar-track">'
-                    f'<div class="bar-fill" '
-                    f'style="width:{score * 100:.0f}%;">'
-                    '</div>'
-                    '</div>'
-                    f'<span class="score">{score:.1%}</span>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
 
         # ====================================================
-        # DOWNLOAD
+        # DISCLAIMER
         # ====================================================
 
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br><br>", unsafe_allow_html=True)
 
-        output_buffer = io.BytesIO()
-
-        result_image.save(
-            output_buffer,
-            format="PNG",
+        st.caption(
+            "CarDD Vision is an AI-assisted visual inspection tool. "
+            "Results should be reviewed by a qualified human inspector. "
+            "Detection confidence is not a measure of damage severity, "
+            "repair cost or vehicle safety."
         )
-
-        st.download_button(
-            "⬇️ DOWNLOAD ANNOTATED IMAGE",
-            data=output_buffer.getvalue(),
-            file_name="cardd_vision_damage_scan.png",
-            mime="image/png",
-            use_container_width=True,
-        )
-
-        # ====================================================
-        # SCAN INFORMATION
-        # ====================================================
-
-        scan_time = datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-
-        st.markdown(
-            '<div class="footer-strip">'
-            f'MODEL · {model_choice.split(" — ")[0]}'
-            '&nbsp; · &nbsp;'
-            f'THRESHOLD · {confidence:.2f}'
-            '&nbsp; · &nbsp;'
-            f'PROCESSING · {processing_time:.2f}s'
-            '&nbsp; · &nbsp;'
-            f'SCAN · {scan_time}'
-            '<br>'
-            '⚠️ Confidence represents model confidence, '
-            'not physical damage severity.'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.markdown(
-    '<div class="footer-strip" style="text-align:center;">'
-    '🚗 CarDD Vision'
-    '&nbsp; · &nbsp;'
-    'AI-assisted vehicle damage detection'
-    '&nbsp; · &nbsp;'
-    'YOLO + CarDD'
-    '</div>',
-    unsafe_allow_html=True,
-)
