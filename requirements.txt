@@ -1,7 +1,5 @@
 streamlit
 ultralytics
 huggingface_hub
-torch
-torchvision
 pillow
 numpy
