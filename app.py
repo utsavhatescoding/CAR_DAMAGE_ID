@@ -384,9 +384,9 @@ with brand_col:
             st.markdown("## 🛡️")
     with name_col:
         st.markdown("### Nepal Vehicle Inspector")
-        st.caption("AI-assisted exterior vehicle inspection")
+        st.caption("AI-assisted exterior vehicle inspection · Build 2026.08.22b")
 with status_col:
-    st.success("SYSTEM READY", icon="●")
+    st.success("SYSTEM READY")
 
 st.write("")
 
@@ -459,8 +459,7 @@ with st.container(border=True):
 
     if uploaded_file is None:
         st.info(
-            "Capture or upload a clear vehicle image to start the inspection.",
-            icon="📷",
+            "Capture or upload a clear vehicle image to start the inspection."
         )
     else:
         image = Image.open(uploaded_file).convert("RGB")
@@ -533,9 +532,9 @@ if result is not None:
         )
     with report_status:
         if detections:
-            st.warning(f"{len(detections)} finding(s)", icon="⚠️")
+            st.warning(f"{len(detections)} finding(s)")
         else:
-            st.success("No findings", icon="✓")
+            st.success("No findings")
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Detected regions", len(detections))
@@ -580,13 +579,12 @@ if result is not None:
             )
         else:
             st.success(
-                "No visible damage was detected above the selected threshold.",
-                icon="✓",
+                "No visible damage was detected above the selected threshold."
             )
 
     with evidence_tab:
         if not detections:
-            st.success("No evidence regions to review.", icon="✓")
+            st.success("No evidence regions to review.")
         else:
             st.markdown("### Detection evidence")
             st.caption(
@@ -654,8 +652,7 @@ if result is not None:
     st.write("")
     st.warning(
         "AI-assisted visual screening only. A qualified human inspector should review findings "
-        "before safety, valuation, repair or insurance decisions.",
-        icon="⚠️",
+        "before safety, valuation, repair or insurance decisions."
     )
 
 # ============================================================
