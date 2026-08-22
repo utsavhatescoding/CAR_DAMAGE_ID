@@ -1,4 +1,5 @@
 import base64
+import html
 import io
 import time
 import textwrap
@@ -570,6 +571,61 @@ hr,
     letter-spacing: .045em;
 }
 
+
+/* ---------- native image frame ---------- */
+[data-testid="stImage"] {
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    padding: 9px;
+}
+
+[data-testid="stImage"] img {
+    display: block;
+    width: 100%;
+    border-radius: 0 !important;
+}
+
+/* ---------- dark results table ---------- */
+.results-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--line-strong);
+    background: var(--panel);
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 680px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .72rem;
+}
+
+.results-table th {
+    text-align: left;
+    padding: .78rem .85rem;
+    color: var(--amber);
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line-strong);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    font-weight: 600;
+}
+
+.results-table td {
+    padding: .78rem .85rem;
+    color: var(--paper);
+    border-bottom: 1px solid var(--line);
+}
+
+.results-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.results-table tbody tr:hover {
+    background: rgba(255,182,39,.035);
+}
+
 /* ---------- dataframe / alerts / progress ---------- */
 [data-testid="stDataFrame"] {
     border: 1px solid var(--line);
@@ -718,6 +774,23 @@ hr,
     }
 }
 
+
+@media (max-width: 768px) {
+    [data-testid="stImage"] {
+        padding: 6px;
+    }
+
+    .results-table {
+        font-size: .66rem;
+        min-width: 620px;
+    }
+
+    .results-table th,
+    .results-table td {
+        padding: .65rem .7rem;
+    }
+}
+
 @media (max-width: 420px) {
     .block-container {
         padding-left: .7rem !important;
@@ -752,21 +825,10 @@ def image_to_data_uri(img: Image.Image) -> str:
 
 
 def render_viewfinder(img: Image.Image, label: str, scanning: bool = False):
-    scanline = '<div class="scanline"></div>' if scanning else ""
-    uri = image_to_data_uri(img)
-    html_block(
-        f"""
-        <div class="frame-label">{label}</div>
-        <div class="viewfinder">
-            <span class="corner corner-tl"></span>
-            <span class="corner corner-tr"></span>
-            <span class="corner corner-bl"></span>
-            <span class="corner corner-br"></span>
-            {scanline}
-            <img src="{uri}" alt="{label}">
-        </div>
-        """
-    )
+    # Native Streamlit image rendering is deliberate here.
+    # It avoids Markdown/base64 being shown as visible HTML on Streamlit Cloud.
+    html_block(f'<div class="frame-label">{label}</div>')
+    st.image(img, use_container_width=True)
 
 
 def severity_for(score: float):
@@ -790,6 +852,44 @@ def render_ticket(index: int, detection: dict):
                 <div class="bar-fill" style="width:{score*100:.0f}%"></div>
             </div>
             <span class="score">{score:.1%}</span>
+        </div>
+        """
+    )
+
+
+def render_summary_table(rows):
+    if not rows:
+        return
+
+    body = []
+    for row in rows:
+        body.append(
+            "<tr>"
+            f"<td>{html.escape(str(row['Finding']))}</td>"
+            f"<td>{html.escape(str(row['Damage']))}</td>"
+            f"<td>{html.escape(str(row['Confidence']))}</td>"
+            f"<td>{html.escape(str(row['Region']))}</td>"
+            "</tr>"
+        )
+
+    html_block(
+        """
+        <div class="results-table-wrap">
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Finding</th>
+                        <th>Damage</th>
+                        <th>Confidence</th>
+                        <th>Region</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        + "".join(body)
+        + """
+                </tbody>
+            </table>
         </div>
         """
     )
@@ -1126,11 +1226,7 @@ if result is not None:
                         "Region": f"({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f})",
                     }
                 )
-            st.dataframe(
-                pd.DataFrame(summary_rows),
-                use_container_width=True,
-                hide_index=True,
-            )
+            render_summary_table(summary_rows)
         else:
             html_block(
                 '<div class="clear-banner">✓ NO VISIBLE DAMAGE DETECTED ABOVE THE SELECTED THRESHOLD</div>'
