@@ -1,5 +1,6 @@
 import os
 import time
+import textwrap
 import urllib.request
 from pathlib import Path
 
@@ -15,11 +16,21 @@ from ultralytics import YOLO
 # ============================================================
 
 st.set_page_config(
-    page_title="CarDD Vision",
+    page_title="CarDD Vision — Vehicle Inspection",
     page_icon="🚘",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Streamlit treats indented HTML as Markdown code blocks.
+# Normalize every unsafe HTML block before rendering.
+_original_markdown = st.markdown
+def _safe_markdown(body, *args, **kwargs):
+    if kwargs.get("unsafe_allow_html") and isinstance(body, str):
+        body = textwrap.dedent(body).strip()
+    return _original_markdown(body, *args, **kwargs)
+
+st.markdown = _safe_markdown
 
 
 # ============================================================
@@ -66,7 +77,9 @@ st.markdown(
     }
 
     #MainMenu,
-    footer {
+    footer,
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"] {
         visibility: hidden;
     }
 
@@ -454,6 +467,38 @@ st.markdown(
 
     }
 
+
+    /* PRODUCT POLISH */
+    [data-testid="stAppViewContainer"] > .main {
+        background: linear-gradient(180deg, #F8FAFC 0%, #F4F6F8 100%);
+    }
+
+    [data-testid="stSidebar"] {
+        box-shadow: 1px 0 0 rgba(15,23,42,0.03);
+    }
+
+    [data-testid="stFileUploaderDropzone"] {
+        min-height: 170px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .hero {
+        box-shadow: 0 24px 60px rgba(15,23,42,0.14);
+        border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .info-card, .metric-card, .finding, .result-hero {
+        box-shadow: 0 8px 24px rgba(15,23,42,0.035);
+    }
+
+    .stButton > button {
+        min-height: 48px;
+        font-size: 0.95rem;
+        box-shadow: 0 8px 18px rgba(15,23,42,0.12);
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -608,7 +653,7 @@ with st.sidebar:
                 </div>
 
                 <div class="brand-sub">
-                    AI VEHICLE INSPECTION
+                    VEHICLE INTELLIGENCE
                 </div>
             </div>
         </div>
@@ -624,8 +669,8 @@ with st.sidebar:
     model_choice = st.radio(
         "Model",
         [
-            "🔬 YOLO11m — Recommended",
-            "⚡ YOLOv8s — Fast Scan",
+            "Precision inspection",
+            "Quick inspection",
         ],
         label_visibility="collapsed",
     )
@@ -652,7 +697,7 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if "YOLO11m" in model_choice:
+    if model_choice.startswith("Precision"):
 
         st.markdown(
             """
@@ -665,10 +710,8 @@ with st.sidebar:
                 </div>
 
                 <div class="info-text">
-                    Balanced detection model for
-                    dents, scratches, cracks,
-                    broken lamps, shattered glass
-                    and flat tires.
+                    Best for detailed vehicle checks across dents,
+                    scratches, cracks, lamps, glass and tyres.
                 </div>
 
             </div>
@@ -689,8 +732,7 @@ with st.sidebar:
                 </div>
 
                 <div class="info-text">
-                    Lightweight segmentation model
-                    for quicker vehicle inspection.
+                    Faster visual screening for quick checks and triage.
                 </div>
 
             </div>
@@ -709,19 +751,18 @@ st.markdown(
 
         <div class="eyebrow">
             <span class="eyebrow-dot"></span>
-            AI-powered vehicle inspection
+            AI vehicle condition intelligence
         </div>
 
         <h1>
-            See the damage.<br>
-            <span>Understand the vehicle.</span>
+            Inspect a vehicle.<br>
+            <span>Know what needs attention.</span>
         </h1>
 
         <p>
-            Upload a vehicle photo and let CarDD Vision
-            identify visible damage in seconds.
-            Review the inspection, detected areas and
-            confidence for every finding.
+            Turn vehicle photos into a structured visual inspection.
+            Detect visible exterior damage, review the evidence,
+            and make faster inspection decisions.
         </p>
 
     </div>
@@ -745,7 +786,7 @@ with col1:
             <div class="info-icon">📸</div>
 
             <div class="info-title">
-                01 — Upload
+                Upload photo
             </div>
 
             <div class="info-text">
@@ -768,7 +809,7 @@ with col2:
             <div class="info-icon">🧠</div>
 
             <div class="info-title">
-                02 — AI Inspection
+                Run inspection
             </div>
 
             <div class="info-text">
@@ -791,7 +832,7 @@ with col3:
             <div class="info-icon">🔍</div>
 
             <div class="info-title">
-                03 — Review
+                Review evidence
             </div>
 
             <div class="info-text">
@@ -814,7 +855,7 @@ st.markdown("<br><br>", unsafe_allow_html=True)
 # ============================================================
 
 st.markdown(
-    '<div class="section-label">Start an inspection</div>',
+    '<div class="section-label">New inspection</div>',
     unsafe_allow_html=True,
 )
 
@@ -843,13 +884,12 @@ if uploaded_file is None:
 
             <div class="info-title"
                  style="font-size:1.15rem;">
-                Ready for inspection
+                Ready when you are
             </div>
 
             <div class="info-text"
                  style="max-width:460px;margin:0.6rem auto 0;">
-                Upload a clear image of a vehicle to begin
-                the AI-powered damage inspection.
+                Upload a clear vehicle photo to create an AI-assisted inspection report.
             </div>
 
         </div>
@@ -927,7 +967,7 @@ else:
 
     if scan_button:
 
-        if "YOLO11m" in model_choice:
+        if model_choice.startswith("Precision"):
 
             model_name = "YOLO11m"
             loading_message = "Loading YOLO11m and inspecting vehicle..."
@@ -976,7 +1016,7 @@ else:
 
                 <div class="result-title"
                      style="margin-top:1rem;">
-                    Vehicle inspection report
+                    Inspection summary
                 </div>
 
                 <div class="result-sub">
@@ -1143,7 +1183,7 @@ else:
         st.markdown("<br><br>", unsafe_allow_html=True)
 
         st.markdown(
-            '<div class="section-label">Detected damage evidence</div>',
+            '<div class="section-label">Inspection findings</div>',
             unsafe_allow_html=True,
         )
 
