@@ -35,16 +35,20 @@ st.markdown(
     """
 <style>
 :root {
-    --bg: #FBFCFE;
-    --surface: #FFFFFF;
-    --text: #111827;
-    --muted: #667085;
-    --line: #E7EAF0;
-    --blue: #246BFD;
-    --blue-2: #1859DB;
-    --blue-soft: #EEF4FF;
-    --green: #159467;
-    --amber: #B7791F;
+    --ink: #0B1220;
+    --ink-2: #111C33;
+    --blue: #2563FF;
+    --blue-2: #4F46E5;
+    --cyan: #06B6D4;
+    --amber: #F59E0B;
+    --surface: rgba(255,255,255,.96);
+    --surface-2: #F7FAFF;
+    --text: #0F172A;
+    --muted: #64748B;
+    --line: #DCE6F5;
+    --soft-blue: #EDF4FF;
+    --soft-cyan: #ECFEFF;
+    --shadow: 0 18px 50px rgba(26, 54, 93, .10);
 }
 
 html, body, [class*="css"] {
@@ -52,14 +56,17 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background: var(--bg);
     color: var(--text);
+    background:
+      radial-gradient(circle at 8% 4%, rgba(37,99,255,.13), transparent 28%),
+      radial-gradient(circle at 92% 12%, rgba(6,182,212,.11), transparent 24%),
+      linear-gradient(180deg, #F8FBFF 0%, #FFFFFF 42%, #F7FAFF 100%);
 }
 
 [data-testid="stHeader"] {
-    background: rgba(251,252,254,.92);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(231,234,240,.78);
+    background: rgba(248,251,255,.82);
+    backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(220,230,245,.75);
 }
 
 #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"] {
@@ -67,130 +74,208 @@ html, body, [class*="css"] {
 }
 
 .block-container {
-    max-width: 1120px;
-    padding-top: 1.1rem;
-    padding-bottom: 4rem;
+    max-width: 1160px;
+    padding-top: 1.05rem;
+    padding-bottom: 4.5rem;
 }
 
 h1, h2, h3, h4 {
-    color: var(--text);
-    letter-spacing: -0.035em;
+    color: var(--ink);
+    letter-spacing: -0.04em;
 }
 
 h1 {
-    font-size: clamp(2.55rem, 6vw, 4.9rem) !important;
-    line-height: .98 !important;
-    font-weight: 780 !important;
-    max-width: 820px;
+    font-size: clamp(3rem, 6.4vw, 5.5rem) !important;
+    line-height: .94 !important;
+    font-weight: 850 !important;
+    max-width: 900px;
 }
 
-h2 { font-weight: 740 !important; }
-h3 { font-weight: 720 !important; }
+h2 { font-weight: 820 !important; }
+h3 { font-weight: 780 !important; }
 p, .stCaption { color: var(--muted); }
 
-[data-testid="stImage"] img {
-    border-radius: 18px;
-}
-
-/* minimal card */
+/* hero + card surfaces */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    background: var(--surface);
-    border: 1px solid var(--line) !important;
-    border-radius: 18px !important;
-    box-shadow: 0 10px 28px rgba(16,24,40,.045);
+    background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(250,252,255,.97));
+    border: 1px solid rgba(194,211,236,.85) !important;
+    border-radius: 24px !important;
+    box-shadow: var(--shadow);
 }
 
-/* upload */
+[data-testid="stImage"] img {
+    border-radius: 20px;
+    box-shadow: 0 12px 30px rgba(15,23,42,.08);
+}
+
+/* uploader — make it feel like the product */
 [data-testid="stFileUploaderDropzone"] {
-    background: #FFFFFF;
-    border: 1.5px dashed #C7CFDA;
-    border-radius: 16px;
-    padding: 1.5rem;
+    background:
+      linear-gradient(135deg, rgba(37,99,255,.065), rgba(6,182,212,.06)),
+      #FFFFFF;
+    border: 1.5px dashed #9BB8E8;
+    border-radius: 22px;
+    padding: 1.75rem;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.7);
 }
 [data-testid="stFileUploaderDropzone"]:hover {
     border-color: var(--blue);
-    background: #FAFCFF;
+    background:
+      linear-gradient(135deg, rgba(37,99,255,.10), rgba(6,182,212,.08)),
+      #FFFFFF;
+}
+[data-testid="stFileUploaderDropzone"] button {
+    border-radius: 12px !important;
+    border: 1px solid #BFD1EF !important;
+    background: white !important;
+    color: var(--ink) !important;
+    font-weight: 750 !important;
 }
 
 /* buttons */
 .stButton > button, .stDownloadButton > button {
-    min-height: 48px;
-    border-radius: 11px;
-    font-weight: 700;
-    box-shadow: none;
+    min-height: 52px;
+    border-radius: 14px;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    box-shadow: 0 8px 22px rgba(37,99,255,.14);
+    transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+    transform: translateY(-1px);
 }
 .stButton > button[kind="primary"] {
-    background: var(--blue);
-    border-color: var(--blue);
-    color: #fff;
+    background: linear-gradient(100deg, var(--blue), var(--blue-2) 58%, #6D5EF6);
+    border: 0;
+    color: white;
+    box-shadow: 0 12px 28px rgba(37,99,255,.24);
 }
 .stButton > button[kind="primary"]:hover {
-    background: var(--blue-2);
-    border-color: var(--blue-2);
+    filter: brightness(1.04);
+    box-shadow: 0 15px 32px rgba(37,99,255,.30);
 }
 
-/* radio as clean segmented cards */
-[data-testid="stRadio"] > div { gap: .55rem; }
+/* model selector */
+[data-testid="stRadio"] > div { gap: .7rem; }
 [data-testid="stRadio"] label {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    padding: .62rem .9rem;
+    background: rgba(255,255,255,.94);
+    border: 1px solid #D7E3F4;
+    border-radius: 14px;
+    padding: .78rem 1rem;
+    box-shadow: 0 5px 16px rgba(26,54,93,.045);
+    transition: all .16s ease;
+}
+[data-testid="stRadio"] label:hover {
+    border-color: #9DBBEA;
+    transform: translateY(-1px);
 }
 [data-testid="stRadio"] label:has(input:checked) {
-    border-color: #AFC7FF;
-    background: var(--blue-soft);
+    border-color: #7BA5FF;
+    background: linear-gradient(135deg, #EEF4FF 0%, #ECFEFF 100%);
+    box-shadow: 0 8px 22px rgba(37,99,255,.10);
 }
 
-[data-testid="stSlider"] [role="slider"] { background: var(--blue) !important; }
+[data-testid="stSlider"] [role="slider"] {
+    background: linear-gradient(180deg, #2563FF, #4F46E5) !important;
+    border: 2px solid white !important;
+    box-shadow: 0 2px 8px rgba(37,99,255,.26);
+}
 
 /* metrics */
 [data-testid="stMetric"] {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: .9rem 1rem;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F7FAFF 100%);
+    border: 1px solid #DCE6F5;
+    border-radius: 18px;
+    padding: 1rem 1.05rem;
+    box-shadow: 0 10px 26px rgba(26,54,93,.065);
 }
-[data-testid="stMetricValue"] { color: var(--text); font-weight: 760; }
+[data-testid="stMetricLabel"] { color: #718096; font-weight: 700; }
+[data-testid="stMetricValue"] { color: var(--ink); font-weight: 850; }
 
 /* tabs */
 [data-baseweb="tab-list"] {
-    gap: 1.25rem;
-    border-bottom: 1px solid var(--line);
+    gap: .75rem;
+    border-bottom: 1px solid #DCE6F5;
 }
-[data-baseweb="tab"] { padding: .65rem 0; }
-[aria-selected="true"][data-baseweb="tab"] { color: var(--blue); }
+[data-baseweb="tab"] {
+    padding: .75rem .2rem .7rem;
+    font-weight: 760;
+}
+[aria-selected="true"][data-baseweb="tab"] {
+    color: var(--blue);
+}
 
 [data-testid="stAlert"] {
-    border-radius: 12px;
+    border-radius: 14px;
     border-width: 1px;
 }
+[data-testid="stNotificationContentInfo"] { color: var(--ink); }
 
 [data-testid="stDataFrame"] {
-    border: 1px solid var(--line);
-    border-radius: 14px;
+    border: 1px solid #DCE6F5;
+    border-radius: 16px;
     overflow: hidden;
+    box-shadow: 0 8px 20px rgba(26,54,93,.05);
+}
+
+[data-testid="stExpander"] {
+    border: 1px solid #DCE6F5;
+    border-radius: 14px;
+    background: rgba(255,255,255,.86);
 }
 
 [data-testid="stSidebar"] {
-    background: #fff;
-    border-right: 1px solid var(--line);
+    background:
+      radial-gradient(circle at 20% 0%, rgba(37,99,255,.13), transparent 30%),
+      #F9FBFF;
+    border-right: 1px solid #DCE6F5;
 }
 
-hr { border-color: var(--line) !important; }
+hr { border-color: #DCE6F5 !important; }
+
+/* native markdown micro-labels */
+[data-testid="stCaptionContainer"] p {
+    letter-spacing: .015em;
+}
 
 @media (max-width: 768px) {
-    .block-container { padding: .75rem .85rem 3rem; }
-    h1 { font-size: 2.55rem !important; line-height: 1.0 !important; }
-    h2 { font-size: 1.55rem !important; }
-    h3 { font-size: 1.08rem !important; }
-    [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 15px !important; }
-    [data-testid="stFileUploaderDropzone"] { padding: 1rem; border-radius: 14px; }
-    [data-testid="stRadio"] > div { flex-direction: column !important; }
-    [data-testid="stRadio"] label { width: 100%; min-height: 46px; }
-    .stButton > button, .stDownloadButton > button { width: 100%; min-height: 50px; }
-    [data-baseweb="tab-list"] { overflow-x: auto; white-space: nowrap; gap: 1rem; }
+    .block-container {
+        padding: .72rem .84rem 3.25rem;
+    }
+    h1 {
+        font-size: 3rem !important;
+        line-height: .96 !important;
+    }
+    h2 { font-size: 1.62rem !important; }
+    h3 { font-size: 1.12rem !important; }
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 18px !important;
+        box-shadow: 0 12px 30px rgba(26,54,93,.08);
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        padding: 1.05rem;
+        border-radius: 18px;
+    }
+    [data-testid="stRadio"] > div {
+        flex-direction: column !important;
+    }
+    [data-testid="stRadio"] label {
+        width: 100%;
+        min-height: 50px;
+        padding: .72rem .85rem;
+    }
+    .stButton > button, .stDownloadButton > button {
+        width: 100%;
+        min-height: 52px;
+        border-radius: 14px;
+    }
+    [data-baseweb="tab-list"] {
+        overflow-x: auto;
+        white-space: nowrap;
+        gap: 1rem;
+    }
     [data-testid="column"] { min-width: 0 !important; }
+    [data-testid="stImage"] img { border-radius: 16px; }
 }
 </style>
 """,
@@ -320,24 +405,24 @@ st.write("")
 st.write("")
 
 # ============================================================
-# HERO — simple, Chassly-inspired hierarchy
+# HERO — vibrant product-first hierarchy
 # ============================================================
-st.caption("KNOW YOUR DAMAGE")
-st.title("See the damage.\nUnderstand the vehicle.")
-st.write(
-    "Upload a vehicle photo and get an instant AI assessment with annotated damage, "
-    "confidence scores and evidence for every detected area."
-)
-st.caption("Fast visual assessment · Two detection models · Detailed evidence")
+with st.container(border=True):
+    st.caption("NEPAL VEHICLE INSPECTOR  ·  AI DAMAGE ASSESSMENT")
+    st.title("See the damage.\nKnow what matters.")
+    st.write(
+        "Upload a vehicle photo and get an instant visual assessment with annotated damage, "
+        "confidence scores and evidence for every detected area."
+    )
+    st.caption("⚡ Fast assessment   ·   🎯 Confidence-based findings   ·   🔎 Visual evidence")
 
-st.write("")
 st.write("")
 
 # ============================================================
 # ASSESSMENT
 # ============================================================
-st.subheader("Start an assessment")
-st.caption("One image is enough to test the current model. Use a clear, well-lit exterior photo.")
+st.subheader("Inspect a vehicle")
+st.caption("Upload one clear exterior photo, choose the model, and run the assessment.")
 st.write("")
 
 model_choice = st.radio(
@@ -365,7 +450,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is None:
-    st.info("Upload a vehicle image to begin.")
+    st.info("Ready when you are — upload a vehicle image to begin the inspection.")
 else:
     image = Image.open(uploaded_file).convert("RGB")
     st.write("")
@@ -423,7 +508,7 @@ if result is not None:
     st.divider()
     st.write("")
 
-    st.caption(f"ASSESSMENT · {inspection_id}")
+    st.caption(f"INSPECTION REPORT  ·  {inspection_id}")
     status_col, meta_col = st.columns([2, 1], vertical_alignment="bottom")
     with status_col:
         if detections:
