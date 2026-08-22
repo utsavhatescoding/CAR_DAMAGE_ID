@@ -57,10 +57,7 @@ html, body, [class*="css"] {
 
 .stApp {
     color: var(--text);
-    background:
-      radial-gradient(circle at 8% 4%, rgba(37,99,255,.13), transparent 28%),
-      radial-gradient(circle at 92% 12%, rgba(6,182,212,.11), transparent 24%),
-      linear-gradient(180deg, #F8FBFF 0%, #FFFFFF 42%, #F7FAFF 100%);
+    background: #FAFBFD;
 }
 
 [data-testid="stHeader"] {
@@ -85,9 +82,9 @@ h1, h2, h3, h4 {
 }
 
 h1 {
-    font-size: clamp(3rem, 6.4vw, 5.5rem) !important;
-    line-height: .94 !important;
-    font-weight: 850 !important;
+    font-size: clamp(2.65rem, 5.2vw, 4.7rem) !important;
+    line-height: 1.02 !important;
+    font-weight: 780 !important;
     max-width: 900px;
 }
 
@@ -97,10 +94,10 @@ p, .stCaption { color: var(--muted); }
 
 /* hero + card surfaces */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(250,252,255,.97));
-    border: 1px solid rgba(194,211,236,.85) !important;
-    border-radius: 24px !important;
-    box-shadow: var(--shadow);
+    background: #FFFFFF;
+    border: 1px solid #E7EAF0 !important;
+    border-radius: 18px !important;
+    box-shadow: 0 6px 24px rgba(15,23,42,.05);
 }
 
 [data-testid="stImage"] img {
@@ -145,14 +142,14 @@ p, .stCaption { color: var(--muted); }
     transform: translateY(-1px);
 }
 .stButton > button[kind="primary"] {
-    background: linear-gradient(100deg, var(--blue), var(--blue-2) 58%, #6D5EF6);
+    background: #175CD3;
     border: 0;
     color: white;
-    box-shadow: 0 12px 28px rgba(37,99,255,.24);
+    box-shadow: 0 6px 16px rgba(23,92,211,.18);
 }
 .stButton > button[kind="primary"]:hover {
     filter: brightness(1.04);
-    box-shadow: 0 15px 32px rgba(37,99,255,.30);
+    box-shadow: 0 8px 20px rgba(23,92,211,.22);
 }
 
 /* model selector */
@@ -240,42 +237,62 @@ hr { border-color: #DCE6F5 !important; }
 
 @media (max-width: 768px) {
     .block-container {
-        padding: .72rem .84rem 3.25rem;
+        padding: .45rem .9rem 2.5rem !important;
+        max-width: 100% !important;
     }
+    [data-testid="stHeader"] { height: 2.7rem; }
     h1 {
-        font-size: 3rem !important;
-        line-height: .96 !important;
+        font-size: 2.25rem !important;
+        line-height: 1.04 !important;
+        letter-spacing: -.035em !important;
+        margin-bottom: .65rem !important;
     }
-    h2 { font-size: 1.62rem !important; }
-    h3 { font-size: 1.12rem !important; }
+    h2 { font-size: 1.45rem !important; letter-spacing: -.025em !important; }
+    h3 { font-size: 1.05rem !important; letter-spacing: -.015em !important; }
+    p { font-size: .95rem !important; line-height: 1.55 !important; }
     [data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 18px !important;
-        box-shadow: 0 12px 30px rgba(26,54,93,.08);
+        border-radius: 16px !important;
+        box-shadow: 0 4px 16px rgba(15,23,42,.045) !important;
     }
     [data-testid="stFileUploaderDropzone"] {
-        padding: 1.05rem;
-        border-radius: 18px;
+        padding: .85rem !important;
+        border-radius: 14px !important;
     }
     [data-testid="stRadio"] > div {
         flex-direction: column !important;
+        gap: .5rem !important;
     }
     [data-testid="stRadio"] label {
-        width: 100%;
-        min-height: 50px;
-        padding: .72rem .85rem;
+        width: 100% !important;
+        min-height: 46px !important;
+        padding: .62rem .75rem !important;
+        border-radius: 12px !important;
     }
     .stButton > button, .stDownloadButton > button {
-        width: 100%;
-        min-height: 52px;
-        border-radius: 14px;
+        width: 100% !important;
+        min-height: 48px !important;
+        border-radius: 12px !important;
+        font-size: .95rem !important;
+    }
+    [data-testid="stHorizontalBlock"] {
+        gap: .75rem !important;
+    }
+    [data-testid="column"] {
+        min-width: 100% !important;
+        width: 100% !important;
+        flex: 1 1 100% !important;
     }
     [data-baseweb="tab-list"] {
-        overflow-x: auto;
-        white-space: nowrap;
-        gap: 1rem;
+        overflow-x: auto; white-space: nowrap; gap: .85rem;
     }
-    [data-testid="column"] { min-width: 0 !important; }
-    [data-testid="stImage"] img { border-radius: 16px; }
+    [data-testid="stMetric"] { padding: .75rem .85rem !important; border-radius: 14px !important; }
+    [data-testid="stImage"] img { border-radius: 14px; box-shadow: none; }
+}
+
+@media (max-width: 420px) {
+    .block-container { padding-left: .72rem !important; padding-right: .72rem !important; }
+    h1 { font-size: 2rem !important; }
+    [data-testid="stFileUploaderDropzone"] button { width: 100% !important; }
 }
 </style>
 """,
@@ -389,33 +406,25 @@ with st.sidebar:
 # ============================================================
 # HEADER
 # ============================================================
-brand, nav = st.columns([4, 1], vertical_alignment="center")
-with brand:
-    a, b = st.columns([0.35, 4.5], vertical_alignment="center")
-    with a:
-        if ICON_PATH.exists():
-            st.image(str(ICON_PATH), width=46)
-    with b:
-        st.markdown("### Nepal Vehicle Inspector")
-        st.caption("AI-powered vehicle damage assessment")
-with nav:
-    st.caption("INSPECTION TOOL")
+a, b = st.columns([0.45, 4.8], vertical_alignment="center")
+with a:
+    if ICON_PATH.exists():
+        st.image(str(ICON_PATH), width=44)
+with b:
+    st.markdown("### Nepal Vehicle Inspector")
+    st.caption("AI-powered vehicle damage assessment")
 
-st.write("")
 st.write("")
 
 # ============================================================
 # HERO — vibrant product-first hierarchy
 # ============================================================
-with st.container(border=True):
-    st.caption("NEPAL VEHICLE INSPECTOR  ·  AI DAMAGE ASSESSMENT")
-    st.title("See the damage.\nKnow what matters.")
-    st.write(
-        "Upload a vehicle photo and get an instant visual assessment with annotated damage, "
-        "confidence scores and evidence for every detected area."
-    )
-    st.caption("⚡ Fast assessment   ·   🎯 Confidence-based findings   ·   🔎 Visual evidence")
-
+st.caption("AI VEHICLE DAMAGE ASSESSMENT")
+st.title("See the damage.\nKnow what matters.")
+st.write(
+    "Upload a vehicle photo for a fast visual assessment with annotated damage, "
+    "confidence scores and cropped evidence."
+)
 st.write("")
 
 # ============================================================
@@ -450,7 +459,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is None:
-    st.info("Ready when you are — upload a vehicle image to begin the inspection.")
+    st.caption("Upload a clear exterior image to begin.")
 else:
     image = Image.open(uploaded_file).convert("RGB")
     st.write("")
