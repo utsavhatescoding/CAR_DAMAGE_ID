@@ -1,551 +1,73 @@
-import os
 import time
-import textwrap
 import urllib.request
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 from huggingface_hub import hf_hub_download
 from PIL import Image
 from ultralytics import YOLO
 
-
-# ============================================================
-# PAGE CONFIG
-# ============================================================
-
+# ------------------------------------------------------------
+# Page
+# ------------------------------------------------------------
 st.set_page_config(
-    page_title="CarDD Vision — Vehicle Inspection",
+    page_title="CarDD Vision | Vehicle Inspection",
     page_icon="🚘",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Streamlit treats indented HTML as Markdown code blocks.
-# Normalize every unsafe HTML block before rendering.
-_original_markdown = st.markdown
-def _safe_markdown(body, *args, **kwargs):
-    if kwargs.get("unsafe_allow_html") and isinstance(body, str):
-        body = textwrap.dedent(body).strip()
-    return _original_markdown(body, *args, **kwargs)
-
-st.markdown = _safe_markdown
-
-
-# ============================================================
-# DESIGN
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-
-    @import url(
-        'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&
-        family=Manrope:wght@500;600;700;800&display=swap'
-    );
-
-    :root {
-        --bg: #F6F7F9;
-        --surface: #FFFFFF;
-        --surface-soft: #F0F2F5;
-        --text: #101828;
-        --muted: #667085;
-        --border: #E4E7EC;
-        --dark: #111827;
-        --blue: #2563EB;
-        --blue-soft: #EFF6FF;
-        --orange: #F97316;
-        --orange-soft: #FFF7ED;
-        --green: #16A34A;
-        --green-soft: #F0FDF4;
-        --red: #DC2626;
-    }
-
-    html, body, [class*="css"] {
-        font-family: 'DM Sans', sans-serif;
-    }
-
-    .stApp {
-        background: var(--bg);
-        color: var(--text);
-    }
-
-    [data-testid="stHeader"] {
-        background: transparent;
-    }
-
-    #MainMenu,
-    footer,
-    [data-testid="stToolbar"],
-    [data-testid="stDecoration"] {
-        visibility: hidden;
-    }
-
-    .block-container {
-        max-width: 1250px;
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-    }
-
-
-    /* SIDEBAR */
-
-    [data-testid="stSidebar"] {
-        background: #FFFFFF;
-        border-right: 1px solid var(--border);
-    }
-
-    [data-testid="stSidebar"] .block-container {
-        padding-top: 1.5rem;
-    }
-
-
-    /* BRAND */
-
-    .brand {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-        margin-bottom: 2rem;
-    }
-
-    .brand-icon {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
-        background: var(--dark);
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-    }
-
-    .brand-title {
-        font-family: 'Manrope', sans-serif;
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: var(--dark);
-        line-height: 1.1;
-    }
-
-    .brand-sub {
-        color: var(--muted);
-        font-size: 0.72rem;
-        margin-top: 2px;
-    }
-
-
-    /* HERO */
-
-    .hero {
-        background:
-            radial-gradient(
-                circle at 85% 20%,
-                rgba(37,99,235,0.16),
-                transparent 28%
-            ),
-            var(--dark);
-
-        color: white;
-        padding: 3.2rem;
-        border-radius: 24px;
-        margin-bottom: 2rem;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .hero::after {
-        content: "";
-        position: absolute;
-        width: 260px;
-        height: 260px;
-        border-radius: 50%;
-        border: 1px solid rgba(255,255,255,0.08);
-        right: -80px;
-        bottom: -130px;
-    }
-
-    .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        color: #93C5FD;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        margin-bottom: 1rem;
-    }
-
-    .eyebrow-dot {
-        width: 8px;
-        height: 8px;
-        background: #60A5FA;
-        border-radius: 50%;
-        box-shadow: 0 0 12px #60A5FA;
-    }
-
-    .hero h1 {
-        font-family: 'Manrope', sans-serif;
-        font-size: clamp(2.4rem, 5vw, 4.2rem);
-        font-weight: 800;
-        line-height: 1.05;
-        margin: 0;
-        max-width: 720px;
-        letter-spacing: -0.04em;
-    }
-
-    .hero h1 span {
-        color: #60A5FA;
-    }
-
-    .hero p {
-        color: #B8C1D1;
-        font-size: 1.05rem;
-        line-height: 1.7;
-        max-width: 620px;
-        margin-top: 1.2rem;
-        margin-bottom: 0;
-    }
-
-
-    /* SECTION */
-
-    .section-label {
-        font-size: 0.78rem;
-        font-weight: 800;
-        color: var(--muted);
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        margin-bottom: 0.7rem;
-    }
-
-
-    /* CARDS */
-
-    .info-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 1.3rem;
-        height: 100%;
-    }
-
-    .info-icon {
-        font-size: 1.45rem;
-        margin-bottom: 0.7rem;
-    }
-
-    .info-title {
-        font-family: 'Manrope', sans-serif;
-        font-weight: 700;
-        font-size: 0.95rem;
-        margin-bottom: 0.35rem;
-        color: var(--text);
-    }
-
-    .info-text {
-        color: var(--muted);
-        font-size: 0.84rem;
-        line-height: 1.55;
-    }
-
-
-    /* RESULT HEADER */
-
-    .result-hero {
-        background: white;
-        border: 1px solid var(--border);
-        border-radius: 22px;
-        padding: 1.7rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .result-title {
-        font-family: 'Manrope', sans-serif;
-        font-size: 1.65rem;
-        font-weight: 800;
-        margin: 0;
-        color: var(--dark);
-    }
-
-    .result-sub {
-        color: var(--muted);
-        margin-top: 0.35rem;
-        font-size: 0.9rem;
-    }
-
-
-    /* METRICS */
-
-    .metric-card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 1.25rem;
-        height: 100%;
-    }
-
-    .metric-label {
-        color: var(--muted);
-        font-size: 0.75rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-    }
-
-    .metric-value {
-        font-family: 'Manrope', sans-serif;
-        color: var(--dark);
-        font-size: 1.7rem;
-        font-weight: 800;
-        margin-top: 0.4rem;
-    }
-
-    .metric-note {
-        color: var(--muted);
-        font-size: 0.76rem;
-        margin-top: 0.2rem;
-    }
-
-
-    /* FINDING CARDS */
-
-    .finding {
-        background: white;
-        border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 1.2rem;
-        margin-bottom: 0.8rem;
-    }
-
-    .finding-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .finding-name {
-        font-family: 'Manrope', sans-serif;
-        font-size: 1rem;
-        font-weight: 800;
-        color: var(--dark);
-    }
-
-    .confidence-pill {
-        background: var(--blue-soft);
-        color: var(--blue);
-        border-radius: 999px;
-        padding: 0.32rem 0.65rem;
-        font-size: 0.75rem;
-        font-weight: 800;
-        white-space: nowrap;
-    }
-
-    .progress-track {
-        height: 7px;
-        background: #EEF0F3;
-        border-radius: 99px;
-        overflow: hidden;
-        margin-top: 0.8rem;
-    }
-
-    .progress-fill {
-        height: 100%;
-        background: linear-gradient(
-            90deg,
-            #2563EB,
-            #60A5FA
-        );
-        border-radius: 99px;
-    }
-
-    .finding-note {
-        color: var(--muted);
-        font-size: 0.78rem;
-        margin-top: 0.65rem;
-    }
-
-
-    /* IMAGE CONTAINER */
-
-    .image-label {
-        font-family: 'Manrope', sans-serif;
-        font-size: 1rem;
-        font-weight: 800;
-        color: var(--dark);
-        margin-bottom: 0.6rem;
-    }
-
-
-    /* STATUS */
-
-    .status-good {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        background: var(--green-soft);
-        color: var(--green);
-        padding: 0.42rem 0.75rem;
-        border-radius: 999px;
-        font-size: 0.75rem;
-        font-weight: 800;
-    }
-
-    .status-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--green);
-    }
-
-
-    /* UPLOADER */
-
-    [data-testid="stFileUploaderDropzone"] {
-        background: white;
-        border: 2px dashed #CBD5E1;
-        border-radius: 20px;
-        padding: 2rem;
-    }
-
-    [data-testid="stFileUploaderDropzone"]:hover {
-        border-color: var(--blue);
-        background: #FAFCFF;
-    }
-
-
-    /* BUTTON */
-
-    .stButton > button {
-        width: 100%;
-        background: var(--dark);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 0.85rem 1rem;
-        font-family: 'Manrope', sans-serif;
-        font-weight: 700;
-        transition: all 0.2s ease;
-    }
-
-    .stButton > button:hover {
-        background: var(--blue);
-        border: none;
-        transform: translateY(-1px);
-    }
-
-
-    /* IMAGE */
-
-    [data-testid="stImage"] img {
-        border-radius: 16px;
-    }
-
-
-    /* MOBILE */
-
-    @media (max-width: 768px) {
-
-        .hero {
-            padding: 2rem 1.4rem;
-            border-radius: 18px;
-        }
-
-        .hero h1 {
-            font-size: 2.4rem;
-        }
-
-        .block-container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-
-    }
-
-
-    /* PRODUCT POLISH */
-    [data-testid="stAppViewContainer"] > .main {
-        background: linear-gradient(180deg, #F8FAFC 0%, #F4F6F8 100%);
-    }
-
-    [data-testid="stSidebar"] {
-        box-shadow: 1px 0 0 rgba(15,23,42,0.03);
-    }
-
-    [data-testid="stFileUploaderDropzone"] {
-        min-height: 170px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .hero {
-        box-shadow: 0 24px 60px rgba(15,23,42,0.14);
-        border: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .info-card, .metric-card, .finding, .result-hero {
-        box-shadow: 0 8px 24px rgba(15,23,42,0.035);
-    }
-
-    .stButton > button {
-        min-height: 48px;
-        font-size: 0.95rem;
-        box-shadow: 0 8px 18px rgba(15,23,42,0.12);
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# MODEL LOADERS
-# ============================================================
-
+# CSS is deliberately de-indented and kept separate from page content.
+# All visible content below uses native Streamlit elements, so HTML tags
+# can never appear as text in the app.
+st.markdown("""
+<style>
+:root { --brand:#111827; --accent:#2563eb; }
+.stApp { background:#f6f7f9; }
+[data-testid="stHeader"] { background:rgba(246,247,249,.85); }
+#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] { visibility:hidden; }
+.block-container { max-width:1240px; padding-top:1.4rem; padding-bottom:3rem; }
+[data-testid="stSidebar"] { background:#ffffff; border-right:1px solid #e5e7eb; }
+[data-testid="stSidebar"] .block-container { padding-top:1.2rem; }
+[data-testid="stFileUploaderDropzone"] { background:#fff; border:1.5px dashed #cbd5e1; border-radius:16px; padding:1.2rem; }
+[data-testid="stMetric"] { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:1rem 1.1rem; }
+div[data-testid="stVerticalBlockBorderWrapper"] { background:#fff; border-radius:18px; }
+.stButton > button { border-radius:12px; min-height:46px; font-weight:700; }
+.stButton > button[kind="primary"] { background:#111827; border-color:#111827; }
+.stButton > button[kind="primary"]:hover { background:#2563eb; border-color:#2563eb; }
+[data-testid="stImage"] img { border-radius:14px; }
+.small-note { color:#667085; font-size:.84rem; }
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------------------------------------------------
+# Models
+# ------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_yolo11m():
-
     model_dir = Path.home() / ".cache" / "cardd_vision"
     model_dir.mkdir(parents=True, exist_ok=True)
-
     model_path = model_dir / "yolo11m_car_damage.pt"
-
     if not model_path.exists():
-
         urllib.request.urlretrieve(
-            "https://github.com/ReverendBayes/"
-            "YOLO11m-Car-Damage-Detector/"
-            "raw/main/trained.pt",
+            "https://github.com/ReverendBayes/YOLO11m-Car-Damage-Detector/raw/main/trained.pt",
             str(model_path),
         )
-
     return YOLO(str(model_path))
 
 
 @st.cache_resource(show_spinner=False)
 def load_yolov8():
-
     model_path = hf_hub_download(
         repo_id="abdullahg7/cardd-yolov8s",
         filename="v2.0/best.pt",
     )
-
     return YOLO(model_path)
 
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
-
 def clean_damage_name(name):
-
     replacements = {
         "glass_shatter": "Shattered Glass",
         "shattered_glass": "Shattered Glass",
@@ -554,783 +76,251 @@ def clean_damage_name(name):
         "tire_flat": "Flat Tire",
         "flat_tire": "Flat Tire",
     }
-
     name = str(name).lower().strip()
-
     if name in replacements:
         return replacements[name]
-
     return name.replace("_", " ").title()
 
 
 def get_damage_crop(image, xyxy, padding=35):
-
     x1, y1, x2, y2 = map(int, xyxy)
-
     width, height = image.size
-
     x1 = max(0, x1 - padding)
     y1 = max(0, y1 - padding)
-
     x2 = min(width, x2 + padding)
     y2 = min(height, y2 + padding)
-
     return image.crop((x1, y1, x2, y2))
 
 
 def run_scan(model, image, confidence):
-
     start_time = time.perf_counter()
-
-    results = model.predict(
-        source=np.array(image),
-        conf=confidence,
-        verbose=False,
-    )
-
+    results = model.predict(source=np.array(image), conf=confidence, verbose=False)
     scan_time = time.perf_counter() - start_time
-
     result = results[0]
 
     plotted = result.plot()
-
-    output_image = Image.fromarray(
-        plotted[:, :, ::-1]
-    )
+    output_image = Image.fromarray(plotted[:, :, ::-1])
 
     detections = []
-
     if result.boxes is not None:
-
         for box in result.boxes:
-
             class_id = int(box.cls[0])
             score = float(box.conf[0])
+            xyxy = [float(v) for v in box.xyxy[0].tolist()]
+            damage_name = clean_damage_name(model.names[class_id])
+            detections.append({
+                "name": damage_name,
+                "confidence": score,
+                "box": xyxy,
+                "crop": get_damage_crop(image, xyxy),
+            })
 
-            damage_name = clean_damage_name(
-                model.names[class_id]
-            )
-
-            xyxy = box.xyxy[0].tolist()
-
-            crop = get_damage_crop(
-                image,
-                xyxy
-            )
-
-            detections.append(
-                {
-                    "name": damage_name,
-                    "confidence": score,
-                    "crop": crop,
-                    "box": xyxy,
-                }
-            )
-
-    detections = sorted(
-        detections,
-        key=lambda x: x["confidence"],
-        reverse=True,
-    )
-
+    detections.sort(key=lambda x: x["confidence"], reverse=True)
     return output_image, detections, scan_time
 
 
-# ============================================================
-# SIDEBAR
-# ============================================================
+# ------------------------------------------------------------
+# Session state
+# ------------------------------------------------------------
+for key, default in {
+    "inspection_result": None,
+    "inspection_source_name": None,
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
+# ------------------------------------------------------------
+# Sidebar
+# ------------------------------------------------------------
 with st.sidebar:
+    st.title("🚘 CarDD Vision")
+    st.caption("AI-assisted vehicle inspection")
+    st.divider()
 
-    st.markdown(
-        """
-        <div class="brand">
-            <div class="brand-icon">🚘</div>
-
-            <div>
-                <div class="brand-title">
-                    CarDD Vision
-                </div>
-
-                <div class="brand-sub">
-                    VEHICLE INTELLIGENCE
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="section-label">Inspection mode</div>',
-        unsafe_allow_html=True,
-    )
-
-    model_choice = st.radio(
-        "Model",
-        [
-            "Precision inspection",
-            "Quick inspection",
-        ],
-        label_visibility="collapsed",
-    )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown(
-        '<div class="section-label">Detection sensitivity</div>',
-        unsafe_allow_html=True,
+    st.subheader("Inspection settings")
+    mode = st.radio(
+        "Inspection mode",
+        ["Precision inspection", "Quick inspection"],
+        help="Precision uses the larger model. Quick inspection uses the lighter model.",
     )
 
     confidence = st.slider(
-        "Confidence threshold",
+        "Detection sensitivity",
         min_value=0.10,
         max_value=0.90,
         value=0.25,
         step=0.05,
-        label_visibility="collapsed",
+        help="Lower values detect more possible damage but may increase false positives.",
+    )
+    st.caption(f"Minimum confidence: {confidence:.0%}")
+
+    with st.expander("Advanced model details"):
+        if mode == "Precision inspection":
+            st.write("Model: YOLO11m")
+            st.write("Use: higher-quality visual inspection")
+        else:
+            st.write("Model: YOLOv8s")
+            st.write("Use: faster lightweight inspection")
+        st.caption("These are technical settings and do not represent damage severity.")
+
+# ------------------------------------------------------------
+# Header / product positioning
+# ------------------------------------------------------------
+st.title("Vehicle damage inspection")
+st.caption(
+    "Upload a vehicle image to identify visible exterior damage, review AI evidence, "
+    "and inspect confidence for every finding."
+)
+
+# compact trust row
+c1, c2, c3 = st.columns(3)
+with c1:
+    with st.container(border=True):
+        st.markdown("**⚡ Fast visual screening**")
+        st.caption("Inspect a vehicle photo in seconds.")
+with c2:
+    with st.container(border=True):
+        st.markdown("**🎯 Evidence-based findings**")
+        st.caption("See the exact region behind each detection.")
+with c3:
+    with st.container(border=True):
+        st.markdown("**🔎 Confidence included**")
+        st.caption("Review model certainty for every finding.")
+
+st.write("")
+
+# ------------------------------------------------------------
+# Upload
+# ------------------------------------------------------------
+with st.container(border=True):
+    st.subheader("Start a new inspection")
+    uploaded_file = st.file_uploader(
+        "Vehicle photo",
+        type=["jpg", "jpeg", "png", "webp"],
+        help="For best results, use a clear, well-lit exterior vehicle photo.",
     )
 
-    st.caption(
-        f"Current threshold: {confidence:.0%}"
-    )
-
-    st.markdown("---")
-
-    if model_choice.startswith("Precision"):
-
-        st.markdown(
-            """
-            <div class="info-card">
-
-                <div class="info-icon">🔬</div>
-
-                <div class="info-title">
-                    Recommended
-                </div>
-
-                <div class="info-text">
-                    Best for detailed vehicle checks across dents,
-                    scratches, cracks, lamps, glass and tyres.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
+    if uploaded_file is None:
+        st.info("Upload a vehicle image to begin.", icon="📷")
     else:
+        image = Image.open(uploaded_file).convert("RGB")
+        preview, action = st.columns([1.5, 1])
+        with preview:
+            st.image(image, caption="Uploaded vehicle", use_container_width=True)
+        with action:
+            st.markdown("### Ready to inspect")
+            st.write(
+                "The system will analyse the visible vehicle area and return the "
+                "annotated result, damage categories, confidence scores and evidence crops."
+            )
+            st.caption(f"Image size: {image.width} × {image.height}px")
+            run = st.button("Run vehicle inspection", type="primary", use_container_width=True)
 
-        st.markdown(
-            """
-            <div class="info-card">
+        if run:
+            try:
+                if mode == "Precision inspection":
+                    with st.spinner("Running precision vehicle inspection..."):
+                        model = load_yolo11m()
+                        output_image, detections, scan_time = run_scan(model, image, confidence)
+                    model_name = "YOLO11m"
+                else:
+                    with st.spinner("Running quick vehicle inspection..."):
+                        model = load_yolov8()
+                        output_image, detections, scan_time = run_scan(model, image, confidence)
+                    model_name = "YOLOv8s"
 
-                <div class="info-icon">⚡</div>
+                st.session_state.inspection_result = {
+                    "original": image.copy(),
+                    "annotated": output_image,
+                    "detections": detections,
+                    "scan_time": scan_time,
+                    "model_name": model_name,
+                    "mode": mode,
+                    "threshold": confidence,
+                }
+                st.session_state.inspection_source_name = uploaded_file.name
+            except Exception as exc:
+                st.error(f"Inspection failed: {exc}")
 
-                <div class="info-title">
-                    Fast Scan
-                </div>
+# ------------------------------------------------------------
+# Results — persist after reruns
+# ------------------------------------------------------------
+result = st.session_state.inspection_result
 
-                <div class="info-text">
-                    Faster visual screening for quick checks and triage.
-                </div>
+if result is not None:
+    detections = result["detections"]
+    highest = max((d["confidence"] for d in detections), default=0.0)
+    unique_types = len({d["name"] for d in detections})
 
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-# ============================================================
-# HERO
-# ============================================================
-
-st.markdown(
-    """
-    <div class="hero">
-
-        <div class="eyebrow">
-            <span class="eyebrow-dot"></span>
-            AI vehicle condition intelligence
-        </div>
-
-        <h1>
-            Inspect a vehicle.<br>
-            <span>Know what needs attention.</span>
-        </h1>
-
-        <p>
-            Turn vehicle photos into a structured visual inspection.
-            Detect visible exterior damage, review the evidence,
-            and make faster inspection decisions.
-        </p>
-
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# HOW IT WORKS
-# ============================================================
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-
-    st.markdown(
-        """
-        <div class="info-card">
-
-            <div class="info-icon">📸</div>
-
-            <div class="info-title">
-                Upload photo
-            </div>
-
-            <div class="info-text">
-                Add a clear photo of the vehicle.
-                Exterior damage works best when
-                visible and well lit.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.write("")
+    st.divider()
+    st.subheader("Inspection result")
+    st.caption(
+        f"{st.session_state.inspection_source_name or 'Vehicle image'} · "
+        f"{result['mode']} · threshold {result['threshold']:.0%}"
     )
 
-with col2:
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Detected regions", len(detections))
+    m2.metric("Damage types", unique_types)
+    m3.metric("Highest confidence", f"{highest:.0%}")
+    m4.metric("Scan time", f"{result['scan_time']:.2f}s")
 
-    st.markdown(
-        """
-        <div class="info-card">
+    st.write("")
+    st.markdown("### Original vs AI inspection")
+    before, after = st.columns(2)
+    with before:
+        st.image(result["original"], caption="Original vehicle", use_container_width=True)
+    with after:
+        st.image(result["annotated"], caption="AI inspection output", use_container_width=True)
 
-            <div class="info-icon">🧠</div>
+    st.write("")
+    st.markdown("### Detailed findings")
 
-            <div class="info-title">
-                Run inspection
-            </div>
-
-            <div class="info-text">
-                The selected vision model scans
-                the image for visible damage
-                patterns.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with col3:
-
-    st.markdown(
-        """
-        <div class="info-card">
-
-            <div class="info-icon">🔍</div>
-
-            <div class="info-title">
-                Review evidence
-            </div>
-
-            <div class="info-text">
-                Compare the original image,
-                inspection output and individual
-                damage evidence.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-st.markdown("<br><br>", unsafe_allow_html=True)
-
-
-# ============================================================
-# UPLOAD
-# ============================================================
-
-st.markdown(
-    '<div class="section-label">New inspection</div>',
-    unsafe_allow_html=True,
-)
-
-uploaded_file = st.file_uploader(
-    "Upload vehicle image",
-    type=["jpg", "jpeg", "png", "webp"],
-)
-
-
-# ============================================================
-# BEFORE SCAN
-# ============================================================
-
-if uploaded_file is None:
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <div class="info-card"
-             style="text-align:center;padding:2.5rem;">
-
-            <div style="font-size:2.3rem;margin-bottom:0.8rem;">
-                🚗
-            </div>
-
-            <div class="info-title"
-                 style="font-size:1.15rem;">
-                Ready when you are
-            </div>
-
-            <div class="info-text"
-                 style="max-width:460px;margin:0.6rem auto 0;">
-                Upload a clear vehicle photo to create an AI-assisted inspection report.
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# ============================================================
-# IMAGE LOADED
-# ============================================================
-
-else:
-
-    image = Image.open(uploaded_file).convert("RGB")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    preview_col1, preview_col2 = st.columns([1.45, 1])
-
-    with preview_col1:
-
-        st.markdown(
-            '<div class="image-label">Vehicle photo</div>',
-            unsafe_allow_html=True,
+    if not detections:
+        st.success(
+            "No visible damage was detected above the selected confidence threshold.",
+            icon="✅",
         )
-
-        st.image(
-            image,
-            use_container_width=True,
-        )
-
-    with preview_col2:
-
-        st.markdown(
-            """
-            <div class="info-card"
-                 style="height:auto;">
-
-                <div class="info-icon">
-                    🚘
-                </div>
-
-                <div class="info-title"
-                     style="font-size:1.15rem;">
-                    Ready to inspect
-                </div>
-
-                <div class="info-text"
-                     style="margin-top:0.6rem;">
-
-                    CarDD Vision will scan this image
-                    for visible dents, scratches,
-                    cracks, broken lamps,
-                    shattered glass and flat tires.
-
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        scan_button = st.button(
-            "🔍 Start AI Inspection",
-            use_container_width=True,
-        )
-
-
-    # ========================================================
-    # RUN SCAN
-    # ========================================================
-
-    if scan_button:
-
-        if model_choice.startswith("Precision"):
-
-            model_name = "YOLO11m"
-            loading_message = "Loading YOLO11m and inspecting vehicle..."
-
-            with st.spinner(loading_message):
-
-                model = load_yolo11m()
-
-                output_image, detections, scan_time = run_scan(
-                    model,
-                    image,
-                    confidence,
-                )
-
-        else:
-
-            model_name = "YOLOv8s"
-
-            with st.spinner(
-                "Running fast vehicle inspection..."
-            ):
-
-                model = load_yolov8()
-
-                output_image, detections, scan_time = run_scan(
-                    model,
-                    image,
-                    confidence,
-                )
-
-
-        # ====================================================
-        # RESULT HEADER
-        # ====================================================
-
-        st.markdown("<br><br>", unsafe_allow_html=True)
-
-        st.markdown(
-            f"""
-            <div class="result-hero">
-
-                <div class="status-good">
-                    <span class="status-dot"></span>
-                    INSPECTION COMPLETE
-                </div>
-
-                <div class="result-title"
-                     style="margin-top:1rem;">
-                    Inspection summary
-                </div>
-
-                <div class="result-sub">
-                    {model_name} analysed the uploaded image
-                    using a {confidence:.0%} confidence threshold.
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-        # ====================================================
-        # METRICS
-        # ====================================================
-
-        highest_confidence = (
-            max(
-                [d["confidence"] for d in detections],
-                default=0
-            )
-        )
-
-        unique_damage_types = len(
-            set(
-                d["name"]
-                for d in detections
-            )
-        )
-
-        metric1, metric2, metric3, metric4 = st.columns(4)
-
-        with metric1:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        Findings
-                    </div>
-
-                    <div class="metric-value">
-                        {len(detections)}
-                    </div>
-
-                    <div class="metric-note">
-                        Total detected regions
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with metric2:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        Damage types
-                    </div>
-
-                    <div class="metric-value">
-                        {unique_damage_types}
-                    </div>
-
-                    <div class="metric-note">
-                        Unique categories detected
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with metric3:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        Highest confidence
-                    </div>
-
-                    <div class="metric-value">
-                        {highest_confidence:.0%}
-                    </div>
-
-                    <div class="metric-note">
-                        Strongest model prediction
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with metric4:
-
-            st.markdown(
-                f"""
-                <div class="metric-card">
-
-                    <div class="metric-label">
-                        Scan time
-                    </div>
-
-                    <div class="metric-value">
-                        {scan_time:.2f}s
-                    </div>
-
-                    <div class="metric-note">
-                        Model inference time
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
-        # ====================================================
-        # BEFORE / AFTER
-        # ====================================================
-
-        st.markdown("<br><br>", unsafe_allow_html=True)
-
-        before_col, after_col = st.columns(2)
-
-        with before_col:
-
-            st.markdown(
-                '<div class="image-label">📷 Original vehicle</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.image(
-                image,
-                use_container_width=True,
-            )
-
-        with after_col:
-
-            st.markdown(
-                '<div class="image-label">✨ AI inspection output</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.image(
-                output_image,
-                use_container_width=True,
-            )
-
-
-        # ====================================================
-        # DAMAGE FINDINGS
-        # ====================================================
-
-        st.markdown("<br><br>", unsafe_allow_html=True)
-
-        st.markdown(
-            '<div class="section-label">Inspection findings</div>',
-            unsafe_allow_html=True,
-        )
-
-
-        if detections:
-
-            st.markdown(
-                """
-                <div style="
-                    font-family:'Manrope',sans-serif;
-                    font-size:1.55rem;
-                    font-weight:800;
-                    margin-bottom:0.4rem;
-                ">
-                    Review each finding
-                </div>
-
-                <div style="
-                    color:#667085;
-                    font-size:0.9rem;
-                    margin-bottom:1.4rem;
-                ">
-                    Each card shows the exact image region
-                    identified by the model.
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
-            for index, detection in enumerate(
-                detections,
-                start=1,
-            ):
-
-                finding_col, crop_col = st.columns(
-                    [1.3, 1]
-                )
-
-                with finding_col:
-
-                    st.markdown(
-                        f"""
-                        <div class="finding">
-
-                            <div class="finding-header">
-
-                                <div>
-
-                                    <div class="finding-name">
-                                        {index:02d}. {detection["name"]}
-                                    </div>
-
-                                </div>
-
-                                <div class="confidence-pill">
-                                    {detection["confidence"]:.0%} confidence
-                                </div>
-
-                            </div>
-
-                            <div class="progress-track">
-
-                                <div
-                                    class="progress-fill"
-                                    style="
-                                        width:
-                                        {detection["confidence"] * 100:.0f}%;
-                                    ">
-                                </div>
-
-                            </div>
-
-                            <div class="finding-note">
-                                AI detected this region as
-                                <b>{detection["name"].lower()}</b>.
-                                Confidence represents the model's
-                                certainty in the classification,
-                                not the physical severity or repair cost.
-                            </div>
-
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+    else:
+        # Full summary table
+        summary_rows = []
+        for i, d in enumerate(detections, start=1):
+            x1, y1, x2, y2 = d["box"]
+            summary_rows.append({
+                "#": i,
+                "Damage": d["name"],
+                "Confidence": f"{d['confidence']:.1%}",
+                "Box (x1, y1, x2, y2)": f"{x1:.0f}, {y1:.0f}, {x2:.0f}, {y2:.0f}",
+            })
+        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+        st.write("")
+        for i, d in enumerate(detections, start=1):
+            with st.container(border=True):
+                left, right = st.columns([1.2, 1])
+                with left:
+                    st.markdown(f"#### {i:02d}. {d['name']}")
+                    st.metric("Detection confidence", f"{d['confidence']:.1%}")
+                    st.progress(min(max(d["confidence"], 0.0), 1.0))
+                    x1, y1, x2, y2 = d["box"]
+                    st.write(f"**Bounding box:** ({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f})")
+                    st.caption(
+                        "Confidence is the model's certainty about the damage category. "
+                        "It is not a measure of repair cost, physical severity or vehicle safety."
                     )
+                with right:
+                    st.image(d["crop"], caption=f"Evidence region {i}", use_container_width=True)
 
-                with crop_col:
+    with st.expander("Technical inspection details"):
+        st.write(f"**Model:** {result['model_name']}")
+        st.write(f"**Inspection mode:** {result['mode']}")
+        st.write(f"**Confidence threshold:** {result['threshold']:.0%}")
+        st.write(f"**Inference time:** {result['scan_time']:.3f} seconds")
+        st.write(f"**Image dimensions:** {result['original'].width} × {result['original'].height}px")
 
-                    st.image(
-                        detection["crop"],
-                        caption=f"Detected region {index}",
-                        use_container_width=True,
-                    )
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-
-        else:
-
-            st.markdown(
-                """
-                <div class="info-card"
-                     style="
-                        text-align:center;
-                        padding:2.5rem;
-                        border-color:#BBF7D0;
-                     ">
-
-                    <div style="font-size:2.5rem;">
-                        ✅
-                    </div>
-
-                    <div class="info-title"
-                         style="
-                            font-size:1.2rem;
-                            margin-top:0.7rem;
-                         ">
-                        No visible damage detected
-                    </div>
-
-                    <div class="info-text"
-                         style="
-                            max-width:520px;
-                            margin:0.6rem auto;
-                         ">
-
-                        The selected model did not identify
-                        any damage above the selected confidence
-                        threshold.
-
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-
-        # ====================================================
-        # DISCLAIMER
-        # ====================================================
-
-        st.markdown("<br><br>", unsafe_allow_html=True)
-
-        st.caption(
-            "CarDD Vision is an AI-assisted visual inspection tool. "
-            "Results should be reviewed by a qualified human inspector. "
-            "Detection confidence is not a measure of damage severity, "
-            "repair cost or vehicle safety."
-        )
+    st.warning(
+        "AI-assisted visual screening only. Results should be reviewed by a qualified human inspector, "
+        "especially for safety, valuation or repair decisions.",
+        icon="⚠️",
+    )
