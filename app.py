@@ -920,6 +920,17 @@ def load_yolov8():
     return YOLO(model_path)
 
 
+@st.cache_resource(show_spinner=False)
+def load_our_yolov8n():
+    model_path = BASE_DIR / "models" / "cardd_yolov8n_detection_v1_best.pt"
+    if not model_path.exists():
+        raise FileNotFoundError(
+            "Our trained model is missing. Copy the Colab best.pt file to "
+            "models/cardd_yolov8n_detection_v1_best.pt"
+        )
+    return YOLO(str(model_path))
+
+
 def clean_damage_name(name):
     replacements = {
         "glass_shatter": "Shattered Glass",
@@ -1040,9 +1051,16 @@ st.caption("Choose the model, set the detection threshold and upload one clear e
 
 model_choice = st.radio(
     "Detection model",
-    ["YOLO11m — Precision", "YOLOv8s — Fast"],
+    [
+        "YOLO11m — Precision",
+        "YOLOv8s — Fast",
+        "Our YOLOv8n — Colab trained",
+    ],
     horizontal=True,
-    help="YOLO11m is the recommended primary model. YOLOv8s is lighter and faster.",
+    help=(
+        "YOLO11m is the recommended primary model. YOLOv8s is lighter and faster. "
+        "Our YOLOv8n is the model trained and tested in our Colab workflow."
+    ),
 )
 
 with st.expander("Detection settings", expanded=False):
@@ -1135,13 +1153,20 @@ else:
                         model, image, confidence
                     )
                 model_name = "YOLO11m"
-            else:
+            elif model_choice.startswith("YOLOv8s"):
                 with st.spinner("Analyzing vehicle with YOLOv8s..."):
                     model = load_yolov8()
                     output_image, detections, scan_time = run_scan(
                         model, image, confidence
                     )
                 model_name = "YOLOv8s"
+            else:
+                with st.spinner("Analyzing vehicle with our YOLOv8n..."):
+                    model = load_our_yolov8n()
+                    output_image, detections, scan_time = run_scan(
+                        model, image, confidence
+                    )
+                model_name = "Our YOLOv8n"
 
             st.session_state.inspection_result = {
                 "original": image.copy(),
