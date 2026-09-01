@@ -971,10 +971,17 @@ def get_damage_crop(image, xyxy, padding=35):
 
 def run_scan(model, image, confidence, image_size):
     start_time = time.perf_counter()
+
+    # PIL supplies RGB pixels, while Ultralytics treats NumPy image inputs as
+    # OpenCV-style BGR. Convert explicitly so hosted inference matches the
+    # colour convention used during training and evaluation.
+    input_bgr = np.ascontiguousarray(np.array(image)[:, :, ::-1])
+
     results = model.predict(
-        source=np.array(image),
+        source=input_bgr,
         conf=confidence,
         imgsz=image_size,
+        retina_masks=True,
         verbose=False,
     )
     scan_time = time.perf_counter() - start_time
