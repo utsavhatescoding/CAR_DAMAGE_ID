@@ -896,7 +896,7 @@ def render_summary_table(rows):
 
 
 # ============================================================
-# MODELS — UNCHANGED CORE
+# MODELS
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def load_yolo11m():
@@ -921,13 +921,26 @@ def load_yolov8():
 
 
 @st.cache_resource(show_spinner=False)
-def load_our_yolov8n():
-    model_path = BASE_DIR / "models" / "cardd_yolov8n_detection_v1_best.pt"
+def load_cloudwhynot_yolo26m():
+    model_dir = Path.home() / ".cache" / "cardd_vision"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model_path = model_dir / "cloudwhynot_yolo26m_seg_best.pt"
+
     if not model_path.exists():
-        raise FileNotFoundError(
-            "Our trained model is missing. Copy the Colab best.pt file to "
-            "models/cardd_yolov8n_detection_v1_best.pt"
+        temporary_path = model_path.with_suffix(".part")
+        urllib.request.urlretrieve(
+            "https://github.com/cloudwhynot/"
+            "car-damage-detection-yolo/raw/refs/heads/main/"
+            "models/damage_model/weights/best.pt",
+            str(temporary_path),
         )
+
+        if temporary_path.stat().st_size < 40 * 1024 * 1024:
+            temporary_path.unlink(missing_ok=True)
+            raise RuntimeError("The YOLO26m-seg checkpoint download was incomplete.")
+
+        temporary_path.replace(model_path)
+
     return YOLO(str(model_path))
 
 
@@ -956,9 +969,14 @@ def get_damage_crop(image, xyxy, padding=35):
     return image.crop((x1, y1, x2, y2))
 
 
-def run_scan(model, image, confidence):
+def run_scan(model, image, confidence, image_size):
     start_time = time.perf_counter()
-    results = model.predict(source=np.array(image), conf=confidence, verbose=False)
+    results = model.predict(
+        source=np.array(image),
+        conf=confidence,
+        imgsz=image_size,
+        verbose=False,
+    )
     scan_time = time.perf_counter() - start_time
     result = results[0]
 
@@ -1054,12 +1072,12 @@ model_choice = st.radio(
     [
         "YOLO11m — Precision",
         "YOLOv8s — Fast",
-        "Our YOLOv8n — Colab trained",
+        "YOLO26m-seg — Best tested",
     ],
     horizontal=True,
     help=(
-        "YOLO11m is the recommended primary model. YOLOv8s is lighter and faster. "
-        "Our YOLOv8n is the model trained and tested in our Colab workflow."
+        "YOLO26m-seg achieved the strongest result in our untouched CarDD test. "
+        "YOLOv8s is lighter and faster; YOLO11m remains available for comparison."
     ),
 )
 
@@ -1150,23 +1168,23 @@ else:
                 with st.spinner("Analyzing vehicle with YOLO11m..."):
                     model = load_yolo11m()
                     output_image, detections, scan_time = run_scan(
-                        model, image, confidence
+                        model, image, confidence, image_size=640
                     )
                 model_name = "YOLO11m"
             elif model_choice.startswith("YOLOv8s"):
                 with st.spinner("Analyzing vehicle with YOLOv8s..."):
                     model = load_yolov8()
                     output_image, detections, scan_time = run_scan(
-                        model, image, confidence
+                        model, image, confidence, image_size=1024
                     )
                 model_name = "YOLOv8s"
             else:
-                with st.spinner("Analyzing vehicle with our YOLOv8n..."):
-                    model = load_our_yolov8n()
+                with st.spinner("Analyzing vehicle with YOLO26m-seg..."):
+                    model = load_cloudwhynot_yolo26m()
                     output_image, detections, scan_time = run_scan(
-                        model, image, confidence
+                        model, image, confidence, image_size=896
                     )
-                model_name = "Our YOLOv8n"
+                model_name = "YOLO26m-seg"
 
             st.session_state.inspection_result = {
                 "original": image.copy(),
