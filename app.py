@@ -7,10 +7,10 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pandas as pd
 import streamlit as st
-from huggingface_hub import hf_hub_download
 from PIL import Image
 from ultralytics import YOLO
 
@@ -898,26 +898,34 @@ def render_summary_table(rows):
 # ============================================================
 # MODELS
 # ============================================================
+def download_checkpoint(model_path: Path, url: str):
+    if model_path.exists() and model_path.stat().st_size >= 40 * 1024 * 1024:
+        return
+
+    model_path.unlink(missing_ok=True)
+    temporary_path = model_path.with_suffix(".part")
+    temporary_path.unlink(missing_ok=True)
+    urllib.request.urlretrieve(url, str(temporary_path))
+
+    if temporary_path.stat().st_size < 40 * 1024 * 1024:
+        temporary_path.unlink(missing_ok=True)
+        raise RuntimeError("A model checkpoint download was incomplete.")
+
+    temporary_path.replace(model_path)
+
+
 @st.cache_resource(show_spinner=False)
-def load_yolo11m():
+def load_vehicle_segmenter():
     model_dir = Path.home() / ".cache" / "cardd_vision"
     model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / "yolo11m_car_damage.pt"
-    if not model_path.exists():
-        urllib.request.urlretrieve(
-            "https://github.com/ReverendBayes/YOLO11m-Car-Damage-Detector/raw/main/trained.pt",
-            str(model_path),
-        )
-    return YOLO(str(model_path))
-
-
-@st.cache_resource(show_spinner=False)
-def load_yolov8():
-    model_path = hf_hub_download(
-        repo_id="abdullahg7/cardd-yolov8s",
-        filename="v2.0/best.pt",
+    model_path = model_dir / "yolo26m_seg_vehicle.pt"
+    download_checkpoint(
+        model_path,
+        "https://github.com/cloudwhynot/"
+        "car-damage-detection-yolo/raw/refs/heads/main/"
+        "models/yolo26m-seg.pt",
     )
-    return YOLO(model_path)
+    return YOLO(str(model_path))
 
 
 @st.cache_resource(show_spinner=False)
@@ -926,20 +934,12 @@ def load_cloudwhynot_yolo26m():
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / "cloudwhynot_yolo26m_seg_best.pt"
 
-    if not model_path.exists():
-        temporary_path = model_path.with_suffix(".part")
-        urllib.request.urlretrieve(
-            "https://github.com/cloudwhynot/"
-            "car-damage-detection-yolo/raw/refs/heads/main/"
-            "models/damage_model/weights/best.pt",
-            str(temporary_path),
-        )
-
-        if temporary_path.stat().st_size < 40 * 1024 * 1024:
-            temporary_path.unlink(missing_ok=True)
-            raise RuntimeError("The YOLO26m-seg checkpoint download was incomplete.")
-
-        temporary_path.replace(model_path)
+    download_checkpoint(
+        model_path,
+        "https://github.com/cloudwhynot/"
+        "car-damage-detection-yolo/raw/refs/heads/main/"
+        "models/damage_model/weights/best.pt",
+    )
 
     return YOLO(str(model_path))
 
@@ -969,45 +969,182 @@ def get_damage_crop(image, xyxy, padding=35):
     return image.crop((x1, y1, x2, y2))
 
 
-def run_scan(model, image, confidence, image_size):
+def mask_at_size(mask, width, height):
+    mask = mask.detach().cpu().numpy()
+    if mask.shape != (height, width):
+        mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
+    return mask >= 0.5
+
+
+def select_target_car(vehicle_result, width, height):
+    if vehicle_result.boxes is None or vehicle_result.masks is None:
+        raise ValueError(
+            "No car was found. Use one clear photo with the target car fully visible."
+        )
+
+    candidates = []
+    for index, box in enumerate(vehicle_result.boxes):
+        class_id = int(box.cls[0])
+        class_name = str(vehicle_result.names[class_id]).lower().strip()
+        if class_name != "car":
+            continue
+
+        x1, y1, x2, y2 = [float(v) for v in box.xyxy[0].tolist()]
+        area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        mask = mask_at_size(vehicle_result.masks.data[index], width, height)
+        candidates.append((area, [x1, y1, x2, y2], mask))
+
+    if not candidates:
+        raise ValueError("No car was found. This version currently inspects cars only.")
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1], candidates[0][2], len(candidates)
+
+
+def padded_crop_box(box, width, height, padding_ratio=0.08):
+    x1, y1, x2, y2 = box
+    padding = max(x2 - x1, y2 - y1) * padding_ratio
+    return (
+        max(0, int(x1 - padding)),
+        max(0, int(y1 - padding)),
+        min(width, int(x2 + padding)),
+        min(height, int(y2 + padding)),
+    )
+
+
+def draw_accepted_detections(image_bgr, detections):
+    canvas = image_bgr.copy()
+    overlay = image_bgr.copy()
+    colours = [
+        (39, 182, 255),
+        (90, 210, 120),
+        (90, 90, 235),
+        (215, 135, 55),
+        (210, 90, 190),
+        (65, 215, 225),
+    ]
+
+    for index, detection in enumerate(detections):
+        overlay[detection["mask"]] = colours[index % len(colours)]
+
+    canvas = cv2.addWeighted(overlay, 0.42, canvas, 0.58, 0)
+
+    for index, detection in enumerate(detections):
+        colour = colours[index % len(colours)]
+        contours, _ = cv2.findContours(
+            detection["mask"].astype(np.uint8),
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        cv2.drawContours(canvas, contours, -1, colour, 2)
+
+        x1, y1, x2, y2 = [int(v) for v in detection["box"]]
+        label = f'{detection["name"]} {detection["confidence"]:.0%}'
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), colour, 2)
+        cv2.putText(
+            canvas,
+            label,
+            (x1, max(22, y1 - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            colour,
+            2,
+            cv2.LINE_AA,
+        )
+
+    return canvas
+
+
+def run_scan(image, confidence, overlap_threshold=0.60):
     start_time = time.perf_counter()
+    original_bgr = np.ascontiguousarray(np.array(image)[:, :, ::-1])
+    height, width = original_bgr.shape[:2]
 
-    # PIL supplies RGB pixels, while Ultralytics treats NumPy image inputs as
-    # OpenCV-style BGR. Convert explicitly so hosted inference matches the
-    # colour convention used during training and evaluation.
-    input_bgr = np.ascontiguousarray(np.array(image)[:, :, ::-1])
-
-    results = model.predict(
-        source=input_bgr,
-        conf=confidence,
-        imgsz=image_size,
+    vehicle_result = load_vehicle_segmenter().predict(
+        source=original_bgr,
+        conf=0.25,
+        imgsz=640,
         retina_masks=True,
         verbose=False,
+    )[0]
+    vehicle_box, vehicle_mask, car_count = select_target_car(
+        vehicle_result, width, height
     )
-    scan_time = time.perf_counter() - start_time
-    result = results[0]
 
-    plotted = result.plot()
-    output_image = Image.fromarray(plotted[:, :, ::-1])
+    crop_x1, crop_y1, crop_x2, crop_y2 = padded_crop_box(
+        vehicle_box, width, height
+    )
+    crop_bgr = original_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
+    crop_vehicle_mask = vehicle_mask[crop_y1:crop_y2, crop_x1:crop_x2]
+
+    # Keep damage located on lamps, tyres, mirrors and outer panel boundaries.
+    dilation_size = max(5, int(round(max(crop_bgr.shape[:2]) * 0.012)))
+    if dilation_size % 2 == 0:
+        dilation_size += 1
+    kernel = np.ones((dilation_size, dilation_size), dtype=np.uint8)
+    crop_vehicle_mask = cv2.dilate(
+        crop_vehicle_mask.astype(np.uint8), kernel, iterations=1
+    ).astype(bool)
+
+    damage_result = load_cloudwhynot_yolo26m().predict(
+        source=crop_bgr,
+        conf=confidence,
+        imgsz=896,
+        retina_masks=True,
+        verbose=False,
+    )[0]
 
     detections = []
-    if result.boxes is not None:
-        for box in result.boxes:
+    if damage_result.boxes is not None and damage_result.masks is not None:
+        crop_height, crop_width = crop_bgr.shape[:2]
+        for index, box in enumerate(damage_result.boxes):
+            damage_mask = mask_at_size(
+                damage_result.masks.data[index], crop_width, crop_height
+            )
+            damage_area = int(damage_mask.sum())
+            if damage_area == 0:
+                continue
+
+            overlap_ratio = float(
+                np.logical_and(damage_mask, crop_vehicle_mask).sum() / damage_area
+            )
+            if overlap_ratio < overlap_threshold:
+                continue
+
+            filtered_crop_mask = np.logical_and(damage_mask, crop_vehicle_mask)
+            full_mask = np.zeros((height, width), dtype=bool)
+            full_mask[crop_y1:crop_y2, crop_x1:crop_x2] = filtered_crop_mask
+
             class_id = int(box.cls[0])
-            score = float(box.conf[0])
-            xyxy = [float(v) for v in box.xyxy[0].tolist()]
-            damage_name = clean_damage_name(model.names[class_id])
+            local_box = [float(v) for v in box.xyxy[0].tolist()]
+            global_box = [
+                local_box[0] + crop_x1,
+                local_box[1] + crop_y1,
+                local_box[2] + crop_x1,
+                local_box[3] + crop_y1,
+            ]
             detections.append(
                 {
-                    "name": damage_name,
-                    "confidence": score,
-                    "box": xyxy,
-                    "crop": get_damage_crop(image, xyxy),
+                    "name": clean_damage_name(damage_result.names[class_id]),
+                    "confidence": float(box.conf[0]),
+                    "box": global_box,
+                    "crop": get_damage_crop(image, global_box),
+                    "mask": full_mask,
+                    "vehicle_overlap": overlap_ratio,
                 }
             )
 
-    detections.sort(key=lambda x: x["confidence"], reverse=True)
-    return output_image, detections, scan_time
+    detections.sort(key=lambda item: item["confidence"], reverse=True)
+    plotted = draw_accepted_detections(original_bgr, detections)
+    output_image = Image.fromarray(plotted[:, :, ::-1])
+    scan_time = time.perf_counter() - start_time
+    pipeline_info = {
+        "cars_found": car_count,
+        "target_box": vehicle_box,
+        "crop_box": [crop_x1, crop_y1, crop_x2, crop_y2],
+        "overlap_threshold": overlap_threshold,
+    }
+    return output_image, detections, scan_time, pipeline_info
 
 
 # ============================================================
@@ -1072,20 +1209,9 @@ html_block(
     <div class="section-title">Inspect a vehicle</div>
     """
 )
-st.caption("Choose the model, set the detection threshold and upload one clear exterior photo.")
-
-model_choice = st.radio(
-    "Detection model",
-    [
-        "YOLO11m — Precision",
-        "YOLOv8s — Fast",
-        "YOLO26m-seg — Best tested",
-    ],
-    horizontal=True,
-    help=(
-        "YOLO26m-seg achieved the strongest result in our untouched CarDD test. "
-        "YOLOv8s is lighter and faster; YOLO11m remains available for comparison."
-    ),
+st.caption(
+    "Set the detection threshold and provide one clear exterior photo. "
+    "The system automatically isolates the main car before damage analysis."
 )
 
 with st.expander("Detection settings", expanded=False):
@@ -1105,14 +1231,26 @@ with st.expander("Detection settings", expanded=False):
 st.write("")
 html_block('<div class="section-kicker">Step 02 · Load image</div>')
 
-uploaded_file = st.file_uploader(
-    "Upload vehicle photo",
-    type=["jpg", "jpeg", "png", "webp"],
-    help="JPG, PNG or WEBP. Clear daylight images work best.",
-    label_visibility="collapsed",
+input_method = st.radio(
+    "Image source",
+    ["Upload photo", "Use camera"],
+    horizontal=True,
 )
 
-if uploaded_file is None:
+if input_method == "Upload photo":
+    image_file = st.file_uploader(
+        "Upload vehicle photo",
+        type=["jpg", "jpeg", "png", "webp"],
+        help="JPG, PNG or WEBP. Clear daylight images work best.",
+        label_visibility="collapsed",
+    )
+else:
+    image_file = st.camera_input(
+        "Take a clear photo of one car",
+        help="Keep the target car large, sharp and fully visible.",
+    )
+
+if image_file is None:
     html_block(
         """
         <div style="
@@ -1130,7 +1268,7 @@ if uploaded_file is None:
         """
     )
 else:
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(image_file).convert("RGB")
     st.write("")
 
     preview, details = st.columns([1.5, 1], gap="large", vertical_alignment="center")
@@ -1145,7 +1283,7 @@ else:
                 <div class="section-kicker">Ready to analyze</div>
                 <div class="meta-row">
                     <span class="meta-key">Model</span>
-                    <span class="meta-value">{model_choice}</span>
+                    <span class="meta-value">YOLO26m-seg</span>
                 </div>
                 <div class="meta-row">
                     <span class="meta-key">Threshold</span>
@@ -1171,38 +1309,24 @@ else:
 
     if run:
         try:
-            if model_choice.startswith("YOLO11m"):
-                with st.spinner("Analyzing vehicle with YOLO11m..."):
-                    model = load_yolo11m()
-                    output_image, detections, scan_time = run_scan(
-                        model, image, confidence, image_size=640
-                    )
-                model_name = "YOLO11m"
-            elif model_choice.startswith("YOLOv8s"):
-                with st.spinner("Analyzing vehicle with YOLOv8s..."):
-                    model = load_yolov8()
-                    output_image, detections, scan_time = run_scan(
-                        model, image, confidence, image_size=1024
-                    )
-                model_name = "YOLOv8s"
-            else:
-                with st.spinner("Analyzing vehicle with YOLO26m-seg..."):
-                    model = load_cloudwhynot_yolo26m()
-                    output_image, detections, scan_time = run_scan(
-                        model, image, confidence, image_size=896
-                    )
-                model_name = "YOLO26m-seg"
+            with st.spinner("Isolating the vehicle and analyzing damage..."):
+                output_image, detections, scan_time, pipeline_info = run_scan(
+                    image, confidence
+                )
 
             st.session_state.inspection_result = {
                 "original": image.copy(),
                 "annotated": output_image,
                 "detections": detections,
                 "scan_time": scan_time,
-                "model_name": model_name,
+                "model_name": "YOLO26m-seg + vehicle isolation",
                 "threshold": confidence,
+                "pipeline_info": pipeline_info,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
-            st.session_state.inspection_source_name = uploaded_file.name
+            st.session_state.inspection_source_name = getattr(
+                image_file, "name", "camera_capture.jpg"
+            )
             st.session_state.inspection_id = datetime.now().strftime(
                 "NVI-%y%m%d-%H%M%S"
             )
@@ -1351,6 +1475,14 @@ if result is not None:
                 f"**Inference time:** {result['scan_time']:.3f}s"
             )
             st.write(f"**Detected regions:** {len(detections)}")
+            pipeline_info = result.get("pipeline_info", {})
+            st.write(
+                f"**Cars found:** {pipeline_info.get('cars_found', '—')}"
+            )
+            st.write(
+                "**Vehicle-overlap filter:** "
+                f"{pipeline_info.get('overlap_threshold', 0.60):.0%}"
+            )
 
         if detections:
             export_rows = []
