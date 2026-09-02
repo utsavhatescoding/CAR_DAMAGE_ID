@@ -1008,10 +1008,16 @@ def resolve_rf_checkpoint():
 
 @st.cache_resource(show_spinner=False)
 def load_our_rfdetr():
+    import torch
     from rfdetr import RFDETR
 
     checkpoint = resolve_rf_checkpoint()
-    return RFDETR.from_checkpoint(str(checkpoint), trust_checkpoint=True)
+    runtime_device = "cuda" if torch.cuda.is_available() else "cpu"
+    return RFDETR.from_checkpoint(
+        str(checkpoint),
+        trust_checkpoint=True,
+        device=runtime_device,
+    )
 
 
 def clean_damage_name(name):
