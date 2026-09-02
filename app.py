@@ -1,6 +1,8 @@
 import base64
+import gc
 import html
 import io
+import os
 import time
 import textwrap
 import urllib.request
@@ -13,6 +15,16 @@ import pandas as pd
 import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
+
+
+RF_CLASS_NAMES = [
+    "dent",
+    "scratch",
+    "crack",
+    "glass shatter",
+    "lamp broken",
+    "tire flat",
+]
 
 
 # ============================================================
@@ -840,13 +852,11 @@ def severity_for(score: float):
 
 
 def render_ticket(index: int, detection: dict):
-    label, sev_class = severity_for(detection["confidence"])
     score = detection["confidence"]
     html_block(
         f"""
         <div class="ticket">
             <span class="finding-id">F-{index:02d}</span>
-            <span class="severity {sev_class}">{label}</span>
             <span class="name">{detection["name"]}</span>
             <div class="bar-track">
                 <div class="bar-fill" style="width:{score*100:.0f}%"></div>
@@ -898,16 +908,34 @@ def render_summary_table(rows):
 # ============================================================
 # MODELS
 # ============================================================
-def download_checkpoint(model_path: Path, url: str):
-    if model_path.exists() and model_path.stat().st_size >= 40 * 1024 * 1024:
+def download_checkpoint(model_path: Path, url: str, minimum_mb: int = 40):
+    minimum_bytes = minimum_mb * 1024 * 1024
+    if model_path.exists() and model_path.stat().st_size >= minimum_bytes:
         return
 
     model_path.unlink(missing_ok=True)
     temporary_path = model_path.with_suffix(".part")
     temporary_path.unlink(missing_ok=True)
-    urllib.request.urlretrieve(url, str(temporary_path))
 
-    if temporary_path.stat().st_size < 40 * 1024 * 1024:
+    if "drive.google.com" in url:
+        import gdown
+
+        downloaded = gdown.download(
+            url=url,
+            output=str(temporary_path),
+            quiet=True,
+            fuzzy=True,
+        )
+        if downloaded is None:
+            temporary_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                "Google Drive could not download the checkpoint. Confirm that "
+                "General access is set to 'Anyone with the link'."
+            )
+    else:
+        urllib.request.urlretrieve(url, str(temporary_path))
+
+    if temporary_path.stat().st_size < minimum_bytes:
         temporary_path.unlink(missing_ok=True)
         raise RuntimeError("A model checkpoint download was incomplete.")
 
@@ -942,6 +970,48 @@ def load_cloudwhynot_yolo26m():
     )
 
     return YOLO(str(model_path))
+
+
+def secret_or_environment(name: str):
+    value = os.getenv(name)
+    if value:
+        return value
+    try:
+        return st.secrets[name]
+    except (KeyError, FileNotFoundError):
+        return None
+
+
+def resolve_rf_checkpoint():
+    bundled_candidates = [
+        BASE_DIR / "models" / "checkpoint_best_ema.pth",
+        BASE_DIR / "checkpoint_best_ema.pth",
+    ]
+    for candidate in bundled_candidates:
+        if candidate.exists() and candidate.stat().st_size >= 120 * 1024 * 1024:
+            return candidate
+
+    model_url = secret_or_environment("RFDETR_MODEL_URL")
+    if not model_url:
+        raise RuntimeError(
+            "RF-DETR is not configured. Add RFDETR_MODEL_URL to Streamlit "
+            "Secrets using a permanent direct-download link to "
+            "checkpoint_best_ema.pth."
+        )
+
+    model_dir = Path.home() / ".cache" / "cardd_vision"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model_path = model_dir / "checkpoint_best_ema.pth"
+    download_checkpoint(model_path, model_url, minimum_mb=120)
+    return model_path
+
+
+@st.cache_resource(show_spinner=False)
+def load_our_rfdetr():
+    from rfdetr import RFDETR
+
+    checkpoint = resolve_rf_checkpoint()
+    return RFDETR.from_checkpoint(str(checkpoint), trust_checkpoint=True)
 
 
 def clean_damage_name(name):
@@ -1147,6 +1217,88 @@ def run_scan(image, confidence, overlap_threshold=0.60):
     return output_image, detections, scan_time, pipeline_info
 
 
+def run_rf_scan(image, confidence):
+    """Run our RF-DETR checkpoint directly on the full, original image."""
+    start_time = time.perf_counter()
+    original_bgr = np.ascontiguousarray(np.array(image)[:, :, ::-1])
+    height, width = original_bgr.shape[:2]
+
+    predictions = load_our_rfdetr().predict(
+        image,
+        threshold=confidence,
+        shape=(624, 624),
+        include_source_image=False,
+    )
+
+    class_ids = (
+        np.asarray(predictions.class_id, dtype=int)
+        if predictions.class_id is not None
+        else np.array([], dtype=int)
+    )
+    scores = (
+        np.asarray(predictions.confidence, dtype=float)
+        if predictions.confidence is not None
+        else np.array([], dtype=float)
+    )
+    boxes = np.asarray(predictions.xyxy, dtype=float)
+    masks = predictions.mask
+    checkpoint_names = predictions.data.get("class_name")
+
+    detections = []
+    for index, (class_id, score, box) in enumerate(
+        zip(class_ids, scores, boxes)
+    ):
+        if checkpoint_names is not None and index < len(checkpoint_names):
+            raw_name = str(checkpoint_names[index]).strip()
+        elif 0 <= class_id < len(RF_CLASS_NAMES):
+            raw_name = RF_CLASS_NAMES[class_id]
+        else:
+            raw_name = f"class {class_id}"
+
+        if masks is None or index >= len(masks):
+            mask = np.zeros((height, width), dtype=bool)
+            x1, y1, x2, y2 = [int(v) for v in box]
+            mask[max(0, y1):min(height, y2), max(0, x1):min(width, x2)] = True
+        else:
+            mask = np.asarray(masks[index])
+            if mask.shape != (height, width):
+                mask = cv2.resize(
+                    mask.astype(np.uint8),
+                    (width, height),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            mask = mask.astype(bool)
+
+        detections.append(
+            {
+                "name": clean_damage_name(raw_name),
+                "confidence": float(score),
+                "box": [float(v) for v in box],
+                "crop": get_damage_crop(image, box),
+                "mask": mask,
+            }
+        )
+
+    detections.sort(key=lambda item: item["confidence"], reverse=True)
+    plotted = draw_accepted_detections(original_bgr, detections)
+    output_image = Image.fromarray(plotted[:, :, ::-1])
+    scan_time = time.perf_counter() - start_time
+    pipeline_info = {
+        "resolution": 624,
+        "post_filter": "None",
+        "image_scope": "Full original image",
+    }
+    return output_image, detections, scan_time, pipeline_info
+
+
+def run_selected_model(model_key, image, confidence):
+    if model_key == "rf_detr":
+        return run_rf_scan(image, confidence)
+    if model_key == "cloud_yolo":
+        return run_scan(image, confidence)
+    raise ValueError(f"Unknown model: {model_key}")
+
+
 # ============================================================
 # STATE
 # ============================================================
@@ -1215,6 +1367,15 @@ st.caption(
 )
 
 with st.expander("Detection settings", expanded=False):
+    model_choice = st.radio(
+        "Inspection model",
+        ["Our RF-DETR", "Cloudwhynot YOLO26"],
+        horizontal=True,
+        help=(
+            "RF-DETR runs directly on the full image. Cloudwhynot first "
+            "isolates the main car, then runs YOLO26 damage segmentation."
+        ),
+    )
     confidence = st.slider(
         "Confidence threshold",
         min_value=0.10,
@@ -1227,6 +1388,15 @@ with st.expander("Detection settings", expanded=False):
         f"Current threshold: {confidence:.0%}. "
         "Confidence is model certainty, not physical severity."
     )
+
+selected_model_key = (
+    "rf_detr" if model_choice == "Our RF-DETR" else "cloud_yolo"
+)
+selected_model_label = (
+    "RF-DETR Seg Medium · Our trained checkpoint"
+    if selected_model_key == "rf_detr"
+    else "YOLO26m-seg · Cloudwhynot pipeline"
+)
 
 st.write("")
 html_block('<div class="section-kicker">Step 02 · Load image</div>')
@@ -1283,7 +1453,7 @@ else:
                 <div class="section-kicker">Ready to analyze</div>
                 <div class="meta-row">
                     <span class="meta-key">Model</span>
-                    <span class="meta-value">YOLO26m-seg</span>
+                    <span class="meta-value">{selected_model_label}</span>
                 </div>
                 <div class="meta-row">
                     <span class="meta-key">Threshold</span>
@@ -1309,9 +1479,14 @@ else:
 
     if run:
         try:
-            with st.spinner("Isolating the vehicle and analyzing damage..."):
-                output_image, detections, scan_time, pipeline_info = run_scan(
-                    image, confidence
+            spinner_message = (
+                "Running RF-DETR on the full image..."
+                if selected_model_key == "rf_detr"
+                else "Isolating the vehicle and running YOLO26..."
+            )
+            with st.spinner(spinner_message):
+                output_image, detections, scan_time, pipeline_info = (
+                    run_selected_model(selected_model_key, image, confidence)
                 )
 
             st.session_state.inspection_result = {
@@ -1319,7 +1494,8 @@ else:
                 "annotated": output_image,
                 "detections": detections,
                 "scan_time": scan_time,
-                "model_name": "YOLO26m-seg + vehicle isolation",
+                "model_key": selected_model_key,
+                "model_name": selected_model_label,
                 "threshold": confidence,
                 "pipeline_info": pipeline_info,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1476,13 +1652,21 @@ if result is not None:
             )
             st.write(f"**Detected regions:** {len(detections)}")
             pipeline_info = result.get("pipeline_info", {})
-            st.write(
-                f"**Cars found:** {pipeline_info.get('cars_found', '—')}"
-            )
-            st.write(
-                "**Vehicle-overlap filter:** "
-                f"{pipeline_info.get('overlap_threshold', 0.60):.0%}"
-            )
+            if result.get("model_key") == "rf_detr":
+                st.write(
+                    f"**Inference resolution:** "
+                    f"{pipeline_info.get('resolution', 624)}px"
+                )
+                st.write("**Image scope:** Full original image")
+                st.write("**Additional filtering:** None")
+            else:
+                st.write(
+                    f"**Cars found:** {pipeline_info.get('cars_found', '—')}"
+                )
+                st.write(
+                    "**Vehicle-overlap filter:** "
+                    f"{pipeline_info.get('overlap_threshold', 0.60):.0%}"
+                )
 
         if detections:
             export_rows = []
