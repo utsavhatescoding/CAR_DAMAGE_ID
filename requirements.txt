@@ -1,5 +1,6 @@
-streamlit
-ultralytics
-opencv-python-headless
-numpy
-pillow
+streamlit>=1.41,<2
+ultralytics-opencv-headless==8.4.133
+numpy>=1.26,<3
+pillow>=10,<13
+pandas>=2,<3
+gdown==5.2.0
