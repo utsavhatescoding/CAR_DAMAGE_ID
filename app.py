@@ -9,11 +9,22 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pandas as pd
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image
 from ultralytics import YOLO
+
+
+RF_CLASS_NAMES = [
+    "dent",
+    "scratch",
+    "crack",
+    "glass shatter",
+    "lamp broken",
+    "tire flat",
+]
 
 
 # ============================================================
@@ -961,35 +972,6 @@ def load_cloudwhynot_yolo26m():
     return YOLO(str(model_path))
 
 
-def resolve_proprietary_yolo26_checkpoint():
-    bundled_candidates = [
-        BASE_DIR / "models" / "proprietary_yolo26_stage1_best.pt",
-        BASE_DIR / "proprietary_yolo26_stage1_best.pt",
-    ]
-    for candidate in bundled_candidates:
-        if candidate.exists() and candidate.stat().st_size >= 45 * 1024 * 1024:
-            return candidate
-
-    model_url = secret_or_environment("PROPRIETARY_YOLO26_MODEL_URL")
-    if not model_url:
-        raise RuntimeError(
-            "Our YOLO26 model is not configured. Add "
-            "PROPRIETARY_YOLO26_MODEL_URL to Streamlit Secrets using the "
-            "Google Drive sharing link for the Stage 1 best.pt file."
-        )
-
-    model_dir = Path.home() / ".cache" / "cardd_vision"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / "proprietary_yolo26_stage1_best.pt"
-    download_checkpoint(model_path, model_url, minimum_mb=45)
-    return model_path
-
-
-@st.cache_resource(show_spinner=False)
-def load_proprietary_yolo26m():
-    return YOLO(str(resolve_proprietary_yolo26_checkpoint()))
-
-
 def secret_or_environment(name: str):
     value = os.getenv(name)
     if value:
@@ -998,6 +980,44 @@ def secret_or_environment(name: str):
         return st.secrets[name]
     except (KeyError, FileNotFoundError):
         return None
+
+
+def resolve_rf_checkpoint():
+    bundled_candidates = [
+        BASE_DIR / "models" / "checkpoint_best_ema.pth",
+        BASE_DIR / "checkpoint_best_ema.pth",
+    ]
+    for candidate in bundled_candidates:
+        if candidate.exists() and candidate.stat().st_size >= 120 * 1024 * 1024:
+            return candidate
+
+    model_url = secret_or_environment("RFDETR_MODEL_URL")
+    if not model_url:
+        raise RuntimeError(
+            "RF-DETR is not configured. Add RFDETR_MODEL_URL to Streamlit "
+            "Secrets using a permanent direct-download link to "
+            "checkpoint_best_ema.pth."
+        )
+
+    model_dir = Path.home() / ".cache" / "cardd_vision"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model_path = model_dir / "checkpoint_best_ema.pth"
+    download_checkpoint(model_path, model_url, minimum_mb=120)
+    return model_path
+
+
+@st.cache_resource(show_spinner=False)
+def load_our_rfdetr():
+    import torch
+    from rfdetr import RFDETR
+
+    checkpoint = resolve_rf_checkpoint()
+    runtime_device = "cuda" if torch.cuda.is_available() else "cpu"
+    return RFDETR.from_checkpoint(
+        str(checkpoint),
+        trust_checkpoint=True,
+        device=runtime_device,
+    )
 
 
 def clean_damage_name(name):
@@ -1028,12 +1048,7 @@ def get_damage_crop(image, xyxy, padding=35):
 def mask_at_size(mask, width, height):
     mask = mask.detach().cpu().numpy()
     if mask.shape != (height, width):
-        mask = np.asarray(
-            Image.fromarray((mask >= 0.5).astype(np.uint8) * 255).resize(
-                (width, height),
-                Image.Resampling.NEAREST,
-            )
-        )
+        mask = cv2.resize(mask, (width, height), interpolation=cv2.INTER_NEAREST)
     return mask >= 0.5
 
 
@@ -1074,41 +1089,46 @@ def padded_crop_box(box, width, height, padding_ratio=0.08):
 
 
 def draw_accepted_detections(image_bgr, detections):
-    canvas = Image.fromarray(image_bgr[:, :, ::-1]).convert("RGBA")
+    canvas = image_bgr.copy()
+    overlay = image_bgr.copy()
     colours = [
-        (255, 182, 39),
-        (120, 210, 90),
-        (235, 90, 90),
-        (55, 135, 215),
-        (190, 90, 210),
-        (225, 215, 65),
+        (39, 182, 255),
+        (90, 210, 120),
+        (90, 90, 235),
+        (215, 135, 55),
+        (210, 90, 190),
+        (65, 215, 225),
     ]
 
     for index, detection in enumerate(detections):
-        colour = colours[index % len(colours)]
-        mask = np.asarray(detection["mask"], dtype=bool)
-        mask_rgba = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-        mask_rgba[mask] = (*colour, 105)
-        canvas = Image.alpha_composite(canvas, Image.fromarray(mask_rgba, "RGBA"))
+        overlay[detection["mask"]] = colours[index % len(colours)]
 
-    draw = ImageDraw.Draw(canvas)
+    canvas = cv2.addWeighted(overlay, 0.42, canvas, 0.58, 0)
+
     for index, detection in enumerate(detections):
         colour = colours[index % len(colours)]
+        contours, _ = cv2.findContours(
+            detection["mask"].astype(np.uint8),
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+        cv2.drawContours(canvas, contours, -1, colour, 2)
+
         x1, y1, x2, y2 = [int(v) for v in detection["box"]]
         label = f'{detection["name"]} {detection["confidence"]:.0%}'
-        draw.rectangle((x1, y1, x2, y2), outline=(*colour, 255), width=3)
-        label_y = max(0, y1 - 24)
-        text_box = draw.textbbox((x1, label_y), label)
-        padded_box = (
-            text_box[0] - 3,
-            text_box[1] - 2,
-            text_box[2] + 3,
-            text_box[3] + 2,
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), colour, 2)
+        cv2.putText(
+            canvas,
+            label,
+            (x1, max(22, y1 - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            colour,
+            2,
+            cv2.LINE_AA,
         )
-        draw.rectangle(padded_box, fill=(*colour, 255))
-        draw.text((x1, label_y), label, fill=(12, 14, 16, 255))
 
-    return np.asarray(canvas.convert("RGB"))[:, :, ::-1]
+    return canvas
 
 
 def run_scan(image, confidence, overlap_threshold=0.60):
@@ -1137,11 +1157,10 @@ def run_scan(image, confidence, overlap_threshold=0.60):
     dilation_size = max(5, int(round(max(crop_bgr.shape[:2]) * 0.012)))
     if dilation_size % 2 == 0:
         dilation_size += 1
-    crop_vehicle_mask = np.asarray(
-        Image.fromarray(crop_vehicle_mask.astype(np.uint8) * 255).filter(
-            ImageFilter.MaxFilter(dilation_size)
-        )
-    ) > 0
+    kernel = np.ones((dilation_size, dilation_size), dtype=np.uint8)
+    crop_vehicle_mask = cv2.dilate(
+        crop_vehicle_mask.astype(np.uint8), kernel, iterations=1
+    ).astype(bool)
 
     damage_result = load_cloudwhynot_yolo26m().predict(
         source=crop_bgr,
@@ -1204,61 +1223,83 @@ def run_scan(image, confidence, overlap_threshold=0.60):
     return output_image, detections, scan_time, pipeline_info
 
 
-def run_proprietary_yolo_scan(image, confidence):
-    """Run our Stage 1 YOLO26m-seg checkpoint using its tested pipeline."""
+def run_rf_scan(image, confidence):
+    """Run our RF-DETR checkpoint directly on the full, original image."""
     start_time = time.perf_counter()
     original_bgr = np.ascontiguousarray(np.array(image)[:, :, ::-1])
     height, width = original_bgr.shape[:2]
 
-    result = load_proprietary_yolo26m().predict(
-        source=original_bgr,
-        conf=confidence,
-        iou=0.70,
-        imgsz=896,
-        retina_masks=True,
-        verbose=False,
-    )[0]
+    predictions = load_our_rfdetr().predict(
+        image,
+        threshold=confidence,
+        shape=(624, 624),
+        include_source_image=False,
+    )
+
+    class_ids = (
+        np.asarray(predictions.class_id, dtype=int)
+        if predictions.class_id is not None
+        else np.array([], dtype=int)
+    )
+    scores = (
+        np.asarray(predictions.confidence, dtype=float)
+        if predictions.confidence is not None
+        else np.array([], dtype=float)
+    )
+    boxes = np.asarray(predictions.xyxy, dtype=float)
+    masks = predictions.mask
+    checkpoint_names = predictions.data.get("class_name")
 
     detections = []
-    if result.boxes is not None:
-        for index, box in enumerate(result.boxes):
-            xyxy = [float(value) for value in box.xyxy[0].tolist()]
-            class_id = int(box.cls[0])
+    for index, (class_id, score, box) in enumerate(
+        zip(class_ids, scores, boxes)
+    ):
+        if checkpoint_names is not None and index < len(checkpoint_names):
+            raw_name = str(checkpoint_names[index]).strip()
+        elif 0 <= class_id < len(RF_CLASS_NAMES):
+            raw_name = RF_CLASS_NAMES[class_id]
+        else:
+            raw_name = f"class {class_id}"
 
-            if result.masks is not None and index < len(result.masks.data):
-                mask = mask_at_size(result.masks.data[index], width, height)
-            else:
-                mask = np.zeros((height, width), dtype=bool)
-                x1, y1, x2, y2 = [int(value) for value in xyxy]
-                mask[max(0, y1):min(height, y2), max(0, x1):min(width, x2)] = True
+        if masks is None or index >= len(masks):
+            mask = np.zeros((height, width), dtype=bool)
+            x1, y1, x2, y2 = [int(v) for v in box]
+            mask[max(0, y1):min(height, y2), max(0, x1):min(width, x2)] = True
+        else:
+            mask = np.asarray(masks[index])
+            if mask.shape != (height, width):
+                mask = cv2.resize(
+                    mask.astype(np.uint8),
+                    (width, height),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+            mask = mask.astype(bool)
 
-            detections.append(
-                {
-                    "name": clean_damage_name(result.names[class_id]),
-                    "confidence": float(box.conf[0]),
-                    "box": xyxy,
-                    "crop": get_damage_crop(image, xyxy),
-                    "mask": mask,
-                }
-            )
+        detections.append(
+            {
+                "name": clean_damage_name(raw_name),
+                "confidence": float(score),
+                "box": [float(v) for v in box],
+                "crop": get_damage_crop(image, box),
+                "mask": mask,
+            }
+        )
 
     detections.sort(key=lambda item: item["confidence"], reverse=True)
     plotted = draw_accepted_detections(original_bgr, detections)
     output_image = Image.fromarray(plotted[:, :, ::-1])
     scan_time = time.perf_counter() - start_time
     pipeline_info = {
-        "resolution": 896,
-        "iou_threshold": 0.70,
+        "resolution": 624,
         "post_filter": "None",
         "image_scope": "Full original image",
-        "checkpoint": "Stage 1 best.pt",
     }
     return output_image, detections, scan_time, pipeline_info
 
 
 def run_selected_model(model_key, image, confidence):
-    if model_key == "proprietary_yolo":
-        return run_proprietary_yolo_scan(image, confidence)
+    if model_key == "rf_detr":
+        return run_rf_scan(image, confidence)
     if model_key == "cloud_yolo":
         return run_scan(image, confidence)
     raise ValueError(f"Unknown model: {model_key}")
@@ -1328,24 +1369,24 @@ html_block(
 )
 st.caption(
     "Set the detection threshold and provide one clear exterior photo. "
-    "Use our Stage 1 model for the exact full-image pipeline validated in testing."
+    "The system automatically isolates the main car before damage analysis."
 )
 
 with st.expander("Detection settings", expanded=False):
     model_choice = st.radio(
         "Inspection model",
-        ["Our YOLO26 Stage 1", "Cloudwhynot YOLO26"],
+        ["Our RF-DETR", "Cloudwhynot YOLO26"],
         horizontal=True,
         help=(
-            "Our YOLO26 runs on the full image. Cloudwhynot first "
-            "isolates the main car, then performs damage segmentation."
+            "RF-DETR runs directly on the full image. Cloudwhynot first "
+            "isolates the main car, then runs YOLO26 damage segmentation."
         ),
     )
     confidence = st.slider(
         "Confidence threshold",
         min_value=0.10,
         max_value=0.90,
-        value=0.35,
+        value=0.25,
         step=0.05,
         help="Lower thresholds show more possible damage but can increase false positives.",
     )
@@ -1354,17 +1395,14 @@ with st.expander("Detection settings", expanded=False):
         "Confidence is model certainty, not physical severity."
     )
 
-MODEL_OPTIONS = {
-    "Our YOLO26 Stage 1": (
-        "proprietary_yolo",
-        "YOLO26m-seg · Our Stage 1 best checkpoint",
-    ),
-    "Cloudwhynot YOLO26": (
-        "cloud_yolo",
-        "YOLO26m-seg · Cloudwhynot pipeline",
-    ),
-}
-selected_model_key, selected_model_label = MODEL_OPTIONS[model_choice]
+selected_model_key = (
+    "rf_detr" if model_choice == "Our RF-DETR" else "cloud_yolo"
+)
+selected_model_label = (
+    "RF-DETR Seg Medium · Our trained checkpoint"
+    if selected_model_key == "rf_detr"
+    else "YOLO26m-seg · Cloudwhynot pipeline"
+)
 
 st.write("")
 html_block('<div class="section-kicker">Step 02 · Load image</div>')
@@ -1448,9 +1486,9 @@ else:
     if run:
         try:
             spinner_message = (
-                "Running our YOLO26 Stage 1 model at 896 px..."
-                if selected_model_key == "proprietary_yolo"
-                else "Isolating the vehicle and running Cloudwhynot YOLO26..."
+                "Running RF-DETR on the full image..."
+                if selected_model_key == "rf_detr"
+                else "Isolating the vehicle and running YOLO26..."
             )
             with st.spinner(spinner_message):
                 output_image, detections, scan_time, pipeline_info = (
@@ -1620,16 +1658,13 @@ if result is not None:
             )
             st.write(f"**Detected regions:** {len(detections)}")
             pipeline_info = result.get("pipeline_info", {})
-            if result.get("model_key") == "proprietary_yolo":
+            if result.get("model_key") == "rf_detr":
                 st.write(
                     f"**Inference resolution:** "
-                    f"{pipeline_info.get('resolution', 896)}px"
+                    f"{pipeline_info.get('resolution', 624)}px"
                 )
                 st.write("**Image scope:** Full original image")
-                st.write(
-                    f"**IoU threshold:** "
-                    f"{pipeline_info.get('iou_threshold', 0.70):.0%}"
-                )
+                st.write("**Additional filtering:** None")
             else:
                 st.write(
                     f"**Cars found:** {pipeline_info.get('cars_found', '—')}"
