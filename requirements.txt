@@ -1,8 +1,5 @@
-streamlit>=1.41,<2
-ultralytics==8.4.133
-rfdetr==1.9.3
-opencv-python-headless>=4.10,<5
-numpy>=1.26,<3
-pillow>=10,<13
-pandas>=2,<3
-gdown==5.2.0
+streamlit
+ultralytics
+opencv-python-headless
+numpy
+pillow

@@ -972,35 +972,6 @@ def load_cloudwhynot_yolo26m():
     return YOLO(str(model_path))
 
 
-def resolve_proprietary_yolo26_checkpoint():
-    bundled_candidates = [
-        BASE_DIR / "models" / "proprietary_yolo26_stage1_best.pt",
-        BASE_DIR / "proprietary_yolo26_stage1_best.pt",
-    ]
-    for candidate in bundled_candidates:
-        if candidate.exists() and candidate.stat().st_size >= 45 * 1024 * 1024:
-            return candidate
-
-    model_url = secret_or_environment("PROPRIETARY_YOLO26_MODEL_URL")
-    if not model_url:
-        raise RuntimeError(
-            "Our YOLO26 model is not configured. Add "
-            "PROPRIETARY_YOLO26_MODEL_URL to Streamlit Secrets using the "
-            "Google Drive sharing link for the Stage 1 best.pt file."
-        )
-
-    model_dir = Path.home() / ".cache" / "cardd_vision"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / "proprietary_yolo26_stage1_best.pt"
-    download_checkpoint(model_path, model_url, minimum_mb=45)
-    return model_path
-
-
-@st.cache_resource(show_spinner=False)
-def load_proprietary_yolo26m():
-    return YOLO(str(resolve_proprietary_yolo26_checkpoint()))
-
-
 def secret_or_environment(name: str):
     value = os.getenv(name)
     if value:
@@ -1326,61 +1297,7 @@ def run_rf_scan(image, confidence):
     return output_image, detections, scan_time, pipeline_info
 
 
-def run_proprietary_yolo_scan(image, confidence):
-    """Run our Stage 1 YOLO26m-seg checkpoint using its tested pipeline."""
-    start_time = time.perf_counter()
-    original_bgr = np.ascontiguousarray(np.array(image)[:, :, ::-1])
-    height, width = original_bgr.shape[:2]
-
-    result = load_proprietary_yolo26m().predict(
-        source=original_bgr,
-        conf=confidence,
-        iou=0.70,
-        imgsz=896,
-        retina_masks=True,
-        verbose=False,
-    )[0]
-
-    detections = []
-    if result.boxes is not None:
-        for index, box in enumerate(result.boxes):
-            xyxy = [float(value) for value in box.xyxy[0].tolist()]
-            class_id = int(box.cls[0])
-
-            if result.masks is not None and index < len(result.masks.data):
-                mask = mask_at_size(result.masks.data[index], width, height)
-            else:
-                mask = np.zeros((height, width), dtype=bool)
-                x1, y1, x2, y2 = [int(value) for value in xyxy]
-                mask[max(0, y1):min(height, y2), max(0, x1):min(width, x2)] = True
-
-            detections.append(
-                {
-                    "name": clean_damage_name(result.names[class_id]),
-                    "confidence": float(box.conf[0]),
-                    "box": xyxy,
-                    "crop": get_damage_crop(image, xyxy),
-                    "mask": mask,
-                }
-            )
-
-    detections.sort(key=lambda item: item["confidence"], reverse=True)
-    plotted = draw_accepted_detections(original_bgr, detections)
-    output_image = Image.fromarray(plotted[:, :, ::-1])
-    scan_time = time.perf_counter() - start_time
-    pipeline_info = {
-        "resolution": 896,
-        "iou_threshold": 0.70,
-        "post_filter": "None",
-        "image_scope": "Full original image",
-        "checkpoint": "Stage 1 best.pt",
-    }
-    return output_image, detections, scan_time, pipeline_info
-
-
 def run_selected_model(model_key, image, confidence):
-    if model_key == "proprietary_yolo":
-        return run_proprietary_yolo_scan(image, confidence)
     if model_key == "rf_detr":
         return run_rf_scan(image, confidence)
     if model_key == "cloud_yolo":
@@ -1452,24 +1369,24 @@ html_block(
 )
 st.caption(
     "Set the detection threshold and provide one clear exterior photo. "
-    "Use our Stage 1 model for the exact full-image pipeline validated in testing."
+    "The system automatically isolates the main car before damage analysis."
 )
 
 with st.expander("Detection settings", expanded=False):
     model_choice = st.radio(
         "Inspection model",
-        ["Our YOLO26 Stage 1", "Cloudwhynot YOLO26", "Our RF-DETR"],
+        ["Our RF-DETR", "Cloudwhynot YOLO26"],
         horizontal=True,
         help=(
-            "Our YOLO26 and RF-DETR run on the full image. Cloudwhynot first "
-            "isolates the main car, then performs damage segmentation."
+            "RF-DETR runs directly on the full image. Cloudwhynot first "
+            "isolates the main car, then runs YOLO26 damage segmentation."
         ),
     )
     confidence = st.slider(
         "Confidence threshold",
         min_value=0.10,
         max_value=0.90,
-        value=0.35,
+        value=0.25,
         step=0.05,
         help="Lower thresholds show more possible damage but can increase false positives.",
     )
@@ -1478,21 +1395,14 @@ with st.expander("Detection settings", expanded=False):
         "Confidence is model certainty, not physical severity."
     )
 
-MODEL_OPTIONS = {
-    "Our YOLO26 Stage 1": (
-        "proprietary_yolo",
-        "YOLO26m-seg · Our Stage 1 best checkpoint",
-    ),
-    "Cloudwhynot YOLO26": (
-        "cloud_yolo",
-        "YOLO26m-seg · Cloudwhynot pipeline",
-    ),
-    "Our RF-DETR": (
-        "rf_detr",
-        "RF-DETR Seg Medium · Our trained checkpoint",
-    ),
-}
-selected_model_key, selected_model_label = MODEL_OPTIONS[model_choice]
+selected_model_key = (
+    "rf_detr" if model_choice == "Our RF-DETR" else "cloud_yolo"
+)
+selected_model_label = (
+    "RF-DETR Seg Medium · Our trained checkpoint"
+    if selected_model_key == "rf_detr"
+    else "YOLO26m-seg · Cloudwhynot pipeline"
+)
 
 st.write("")
 html_block('<div class="section-kicker">Step 02 · Load image</div>')
@@ -1576,13 +1486,9 @@ else:
     if run:
         try:
             spinner_message = (
-                "Running our YOLO26 Stage 1 model at 896 px..."
-                if selected_model_key == "proprietary_yolo"
-                else (
-                    "Running RF-DETR on the full image..."
-                    if selected_model_key == "rf_detr"
-                    else "Isolating the vehicle and running Cloudwhynot YOLO26..."
-                )
+                "Running RF-DETR on the full image..."
+                if selected_model_key == "rf_detr"
+                else "Isolating the vehicle and running YOLO26..."
             )
             with st.spinner(spinner_message):
                 output_image, detections, scan_time, pipeline_info = (
@@ -1759,16 +1665,6 @@ if result is not None:
                 )
                 st.write("**Image scope:** Full original image")
                 st.write("**Additional filtering:** None")
-            elif result.get("model_key") == "proprietary_yolo":
-                st.write(
-                    f"**Inference resolution:** "
-                    f"{pipeline_info.get('resolution', 896)}px"
-                )
-                st.write("**Image scope:** Full original image")
-                st.write(
-                    f"**IoU threshold:** "
-                    f"{pipeline_info.get('iou_threshold', 0.70):.0%}"
-                )
             else:
                 st.write(
                     f"**Cars found:** {pipeline_info.get('cars_found', '—')}"
