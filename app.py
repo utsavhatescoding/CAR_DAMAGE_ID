@@ -1212,9 +1212,269 @@ def run_proprietary_yolo_scan(image, confidence):
     return output_image, detections, scan_time, pipeline_info
 
 
+def _box_iou(box_a, box_b):
+    ax1, ay1, ax2, ay2 = box_a
+    bx1, by1, bx2, by2 = box_b
+    intersection = max(0.0, min(ax2, bx2) - max(ax1, bx1)) * max(
+        0.0, min(ay2, by2) - max(ay1, by1)
+    )
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - intersection
+    return intersection / union if union > 0 else 0.0
+
+
+def _mask_iou(mask_a, mask_b):
+    intersection = int(np.logical_and(mask_a, mask_b).sum())
+    if intersection == 0:
+        return 0.0
+    union = int(np.logical_or(mask_a, mask_b).sum())
+    return intersection / union if union else 0.0
+
+
+def _predict_proprietary_region(
+    model,
+    region_bgr,
+    full_image,
+    full_width,
+    full_height,
+    confidence,
+    offset_x=0,
+    offset_y=0,
+    source="full",
+):
+    """Predict one region and restore all coordinates to the full image."""
+    result = model.predict(
+        source=region_bgr,
+        conf=confidence,
+        iou=0.70,
+        imgsz=896,
+        retina_masks=True,
+        verbose=False,
+    )[0]
+
+    region_height, region_width = region_bgr.shape[:2]
+    detections = []
+    if result.boxes is None:
+        return detections
+
+    for index, box in enumerate(result.boxes):
+        local_box = [float(value) for value in box.xyxy[0].tolist()]
+        global_box = [
+            local_box[0] + offset_x,
+            local_box[1] + offset_y,
+            local_box[2] + offset_x,
+            local_box[3] + offset_y,
+        ]
+
+        if result.masks is not None and index < len(result.masks.data):
+            local_mask = mask_at_size(
+                result.masks.data[index], region_width, region_height
+            )
+        else:
+            local_mask = np.zeros((region_height, region_width), dtype=bool)
+            x1, y1, x2, y2 = [int(value) for value in local_box]
+            local_mask[
+                max(0, y1):min(region_height, y2),
+                max(0, x1):min(region_width, x2),
+            ] = True
+
+        full_mask = np.zeros((full_height, full_width), dtype=bool)
+        full_mask[
+            offset_y:offset_y + region_height,
+            offset_x:offset_x + region_width,
+        ] = local_mask
+
+        class_id = int(box.cls[0])
+        detections.append(
+            {
+                "name": clean_damage_name(result.names[class_id]),
+                "confidence": float(box.conf[0]),
+                "box": global_box,
+                "crop": get_damage_crop(full_image, global_box),
+                "mask": full_mask,
+                "sources": {source},
+            }
+        )
+
+    return detections
+
+
+def _primary_car_box(image_bgr, width, height):
+    """Return a reliable primary-car box, or None for close-ups/failures."""
+    result = load_vehicle_segmenter().predict(
+        source=image_bgr,
+        conf=0.25,
+        imgsz=640,
+        retina_masks=True,
+        verbose=False,
+    )[0]
+    if result.boxes is None:
+        return None
+
+    candidates = []
+    for box in result.boxes:
+        class_id = int(box.cls[0])
+        class_name = str(result.names[class_id]).lower().strip()
+        if class_name != "car":
+            continue
+        xyxy = [float(value) for value in box.xyxy[0].tolist()]
+        x1, y1, x2, y2 = xyxy
+        area_ratio = (
+            max(0.0, x2 - x1) * max(0.0, y2 - y1) / max(width * height, 1)
+        )
+        if area_ratio >= 0.12:
+            candidates.append((area_ratio, xyxy))
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def _four_overlapping_tiles(box, width, height, overlap=0.18):
+    """Create four bounded overlapping close-up regions inside one car box."""
+    x1, y1, x2, y2 = box
+    padding = 0.04 * max(x2 - x1, y2 - y1)
+    x1, y1 = max(0, int(x1 - padding)), max(0, int(y1 - padding))
+    x2, y2 = min(width, int(x2 + padding)), min(height, int(y2 + padding))
+    region_width, region_height = x2 - x1, y2 - y1
+
+    tile_width = min(region_width, int(round(region_width * (0.5 + overlap / 2))))
+    tile_height = min(
+        region_height, int(round(region_height * (0.5 + overlap / 2)))
+    )
+    x_starts = sorted({x1, max(x1, x2 - tile_width)})
+    y_starts = sorted({y1, max(y1, y2 - tile_height)})
+
+    tiles = []
+    for tile_y in y_starts:
+        for tile_x in x_starts:
+            tiles.append(
+                (
+                    tile_x,
+                    tile_y,
+                    min(width, tile_x + tile_width),
+                    min(height, tile_y + tile_height),
+                )
+            )
+    return tiles
+
+
+def _merge_multiscale_detections(detections):
+    """Merge same-class full/tile duplicates while retaining model confidence."""
+    merged = []
+    for candidate in sorted(
+        detections, key=lambda item: item["confidence"], reverse=True
+    ):
+        duplicate = None
+        for existing in merged:
+            if existing["name"] != candidate["name"]:
+                continue
+            if (
+                _mask_iou(existing["mask"], candidate["mask"]) >= 0.25
+                or _box_iou(existing["box"], candidate["box"]) >= 0.55
+            ):
+                duplicate = existing
+                break
+
+        if duplicate is None:
+            merged.append(candidate)
+            continue
+
+        duplicate["mask"] = np.logical_or(
+            duplicate["mask"], candidate["mask"]
+        )
+        duplicate["box"] = [
+            min(duplicate["box"][0], candidate["box"][0]),
+            min(duplicate["box"][1], candidate["box"][1]),
+            max(duplicate["box"][2], candidate["box"][2]),
+            max(duplicate["box"][3], candidate["box"][3]),
+        ]
+        duplicate["sources"].update(candidate["sources"])
+
+    for detection in merged:
+        detection["confirmed_multiscale"] = (
+            "full" in detection["sources"]
+            and any(source.startswith("tile") for source in detection["sources"])
+        )
+    return sorted(merged, key=lambda item: item["confidence"], reverse=True)
+
+
+def run_multiscale_yolo_scan(image, confidence):
+    """Experimental full-image + adaptive close-up inference pipeline."""
+    start_time = time.perf_counter()
+
+    # Bound memory use on CPU-hosted Streamlit while keeping useful phone detail.
+    analysis_image = image.copy()
+    analysis_image.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
+    original_bgr = np.ascontiguousarray(np.array(analysis_image)[:, :, ::-1])
+    height, width = original_bgr.shape[:2]
+    model = load_proprietary_yolo26m()
+
+    raw_detections = _predict_proprietary_region(
+        model,
+        original_bgr,
+        analysis_image,
+        width,
+        height,
+        confidence,
+        source="full",
+    )
+
+    primary_car = _primary_car_box(original_bgr, width, height)
+    tiles = []
+    if primary_car is not None and max(width, height) >= 1200:
+        tiles = _four_overlapping_tiles(primary_car, width, height)
+
+    tile_confidence = min(0.90, max(0.35, confidence + 0.10))
+    for tile_index, (x1, y1, x2, y2) in enumerate(tiles, start=1):
+        tile_bgr = original_bgr[y1:y2, x1:x2]
+        if tile_bgr.size == 0:
+            continue
+        raw_detections.extend(
+            _predict_proprietary_region(
+                model,
+                tile_bgr,
+                analysis_image,
+                width,
+                height,
+                tile_confidence,
+                offset_x=x1,
+                offset_y=y1,
+                source=f"tile-{tile_index}",
+            )
+        )
+
+    detections = _merge_multiscale_detections(raw_detections)
+    for detection in detections:
+        detection["crop"] = get_damage_crop(
+            analysis_image, detection["box"]
+        )
+
+    plotted = draw_accepted_detections(original_bgr, detections)
+    output_image = Image.fromarray(plotted[:, :, ::-1])
+    scan_time = time.perf_counter() - start_time
+    pipeline_info = {
+        "resolution": 896,
+        "image_scope": "Full image + adaptive vehicle tiles",
+        "tile_count": len(tiles),
+        "tile_threshold": tile_confidence,
+        "raw_detections": len(raw_detections),
+        "merged_detections": len(detections),
+        "multiscale_confirmed": sum(
+            detection["confirmed_multiscale"] for detection in detections
+        ),
+        "vehicle_localized": primary_car is not None,
+        "analysis_size": f"{width} × {height}px",
+    }
+    return output_image, detections, scan_time, pipeline_info
+
+
 def run_selected_model(model_key, image, confidence):
     if model_key == "proprietary_yolo":
         return run_proprietary_yolo_scan(image, confidence)
+    if model_key == "proprietary_multiscale":
+        return run_multiscale_yolo_scan(image, confidence)
     if model_key == "cloud_yolo":
         return run_scan(image, confidence)
     raise ValueError(f"Unknown model: {model_key}")
@@ -1290,11 +1550,16 @@ st.caption(
 with st.expander("Detection settings", expanded=False):
     model_choice = st.radio(
         "Inspection model",
-        ["Our YOLO26 Stage 1", "Cloudwhynot YOLO26"],
+        [
+            "Our YOLO26 Stage 1",
+            "Our YOLO26 Multi-Scale · Experimental",
+            "Cloudwhynot YOLO26",
+        ],
         horizontal=True,
         help=(
-            "Our YOLO26 runs at 896 px. The Cloudwhynot option follows "
-            "the published full-image silhouette-intersection pipeline."
+            "Stage 1 is the unchanged benchmark. Multi-Scale runs Stage 1 "
+            "on the full image and up to four vehicle close-ups. Cloudwhynot "
+            "uses its published silhouette-intersection approach."
         ),
     )
     confidence = st.slider(
@@ -1318,6 +1583,10 @@ MODEL_OPTIONS = {
     "Cloudwhynot YOLO26": (
         "cloud_yolo",
         "YOLO26m-seg · Cloudwhynot pipeline",
+    ),
+    "Our YOLO26 Multi-Scale · Experimental": (
+        "proprietary_multiscale",
+        "YOLO26m-seg · Full image + adaptive close-ups",
     ),
 }
 selected_model_key, selected_model_label = MODEL_OPTIONS[model_choice]
@@ -1406,7 +1675,11 @@ else:
             spinner_message = (
                 "Running our YOLO26 Stage 1 model at 896 px..."
                 if selected_model_key == "proprietary_yolo"
-                else "Running the Cloudwhynot reference pipeline..."
+                else (
+                    "Running full-image and adaptive close-up analysis..."
+                    if selected_model_key == "proprietary_multiscale"
+                    else "Running the Cloudwhynot reference pipeline..."
+                )
             )
             with st.spinner(spinner_message):
                 output_image, detections, scan_time, pipeline_info = (
@@ -1586,6 +1859,24 @@ if result is not None:
                     f"**IoU threshold:** "
                     f"{pipeline_info.get('iou_threshold', 0.70):.0%}"
                 )
+            elif result.get("model_key") == "proprietary_multiscale":
+                st.write("**Pipeline:** Multi-scale experimental")
+                st.write(
+                    f"**Analysis size:** "
+                    f"{pipeline_info.get('analysis_size', '—')}"
+                )
+                st.write(
+                    f"**Close-up tiles:** "
+                    f"{pipeline_info.get('tile_count', 0)}"
+                )
+                st.write(
+                    f"**Tile threshold:** "
+                    f"{pipeline_info.get('tile_threshold', 0.35):.0%}"
+                )
+                st.write(
+                    f"**Confirmed at multiple scales:** "
+                    f"{pipeline_info.get('multiscale_confirmed', 0)}"
+                )
             else:
                 st.write(
                     f"**Pipeline:** {pipeline_info.get('mode', '—')}"
@@ -1615,6 +1906,12 @@ if result is not None:
                         "y1": round(y1, 1),
                         "x2": round(x2, 1),
                         "y2": round(y2, 1),
+                        "detection_source": ", ".join(
+                            sorted(d.get("sources", {"full"}))
+                        ),
+                        "confirmed_multiscale": d.get(
+                            "confirmed_multiscale", False
+                        ),
                     }
                 )
 
