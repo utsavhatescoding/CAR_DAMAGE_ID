@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from ultralytics import YOLO
 
 
@@ -572,6 +572,74 @@ hr,
     letter-spacing: .045em;
 }
 
+.estimate-hero {
+    padding: 1.15rem 1.2rem;
+    background:
+        linear-gradient(115deg, rgba(255,182,39,.13), transparent 62%),
+        var(--panel);
+    border: 1px solid rgba(255,182,39,.35);
+    border-left: 4px solid var(--amber);
+    margin: .55rem 0 1rem;
+}
+
+.estimate-hero .amount {
+    margin-top: .25rem;
+    color: var(--paper);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(1.55rem, 4vw, 2.35rem);
+    font-weight: 700;
+    letter-spacing: -.025em;
+}
+
+.estimate-hero .note {
+    margin-top: .35rem;
+    color: var(--muted);
+    font-size: .76rem;
+    line-height: 1.5;
+}
+
+.cost-line {
+    padding: .9rem 1rem;
+    margin-bottom: .55rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.cost-line .cost-name {
+    color: var(--paper);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.cost-line .cost-detail {
+    margin-top: .24rem;
+    color: var(--muted);
+    font-size: .68rem;
+}
+
+.cost-line .cost-value {
+    color: var(--amber);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: .78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.prototype-notice {
+    padding: .8rem .9rem;
+    background: rgba(142,151,158,.08);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: .7rem;
+    line-height: 1.55;
+}
+
 
 /* ---------- native image frame ---------- */
 [data-testid="stImage"] {
@@ -895,6 +963,154 @@ def render_summary_table(rows):
 
 
 # ============================================================
+# PROTOTYPE REPAIR ESTIMATOR
+# Illustrative NPR ranges only. These are deliberately separated
+# from model confidence because confidence is not damage severity.
+# ============================================================
+VEHICLE_CATALOG = {
+    "Maruti Suzuki": {
+        "Alto / S-Presso": 0.85,
+        "Wagon R / Celerio": 0.90,
+        "Swift / Baleno": 1.00,
+        "Brezza / Grand Vitara": 1.15,
+    },
+    "Hyundai": {
+        "Grand i10 / Santro": 0.95,
+        "i20": 1.05,
+        "Venue": 1.15,
+        "Creta": 1.25,
+    },
+    "Tata": {
+        "Tiago / Tigor": 0.95,
+        "Punch": 1.05,
+        "Nexon": 1.15,
+        "Safari / Harrier": 1.35,
+    },
+    "Mahindra": {
+        "XUV300 / 3XO": 1.10,
+        "Bolero": 1.10,
+        "Scorpio": 1.25,
+        "Thar / XUV700": 1.40,
+    },
+    "Kia": {
+        "Picanto": 1.00,
+        "Sonet": 1.15,
+        "Seltos": 1.25,
+        "Sportage": 1.45,
+    },
+    "Toyota": {
+        "Yaris / Corolla": 1.20,
+        "Raize": 1.20,
+        "RAV4": 1.45,
+        "Fortuner": 1.55,
+    },
+    "Honda": {
+        "Brio / Amaze": 1.00,
+        "City": 1.15,
+        "WR-V / Elevate": 1.25,
+        "CR-V": 1.50,
+    },
+    "Other / not listed": {
+        "Compact / hatchback": 1.00,
+        "Sedan": 1.10,
+        "SUV / crossover": 1.25,
+        "Premium / luxury": 1.65,
+    },
+}
+
+DAMAGE_LABOUR_RANGES = {
+    "dent": (4000, 12000),
+    "scratch": (2500, 8000),
+    "crack": (6000, 18000),
+    "glass shatter": (3500, 8000),
+    "lamp broken": (1500, 4000),
+    "tire flat": (800, 2500),
+}
+
+PART_PRICE_RANGES = {
+    "Bumper": (12000, 35000),
+    "Door panel": (25000, 65000),
+    "Fender": (15000, 38000),
+    "Bonnet / hood": (30000, 80000),
+    "Quarter panel": (30000, 75000),
+    "Windshield / glass": (15000, 50000),
+    "Headlamp / tail lamp": (8000, 40000),
+    "Tyre": (10000, 32000),
+    "Side mirror": (8000, 28000),
+    "Other exterior panel": (15000, 50000),
+}
+
+DEFAULT_PART_BY_DAMAGE = {
+    "glass shatter": "Windshield / glass",
+    "lamp broken": "Headlamp / tail lamp",
+    "tire flat": "Tyre",
+}
+
+INSURANCE_PACKAGES = {
+    "No coverage": {
+        "coverage": 0.00,
+        "deductible": 0,
+        "cap": 0,
+        "description": "Customer pays the complete estimated repair range.",
+    },
+    "Essential Care": {
+        "coverage": 0.50,
+        "deductible": 5000,
+        "cap": 30000,
+        "description": "Illustrative 50% support after a NPR 5,000 deductible.",
+    },
+    "Smart Protect": {
+        "coverage": 0.70,
+        "deductible": 3000,
+        "cap": 80000,
+        "description": "Illustrative 70% support after a NPR 3,000 deductible.",
+    },
+    "Total Shield": {
+        "coverage": 0.90,
+        "deductible": 1500,
+        "cap": 200000,
+        "description": "Illustrative 90% support after a NPR 1,500 deductible.",
+    },
+}
+
+
+def npr(value):
+    return f"NPR {value:,.0f}"
+
+
+def estimate_finding(damage, part, action, vehicle_multiplier):
+    labour_low, labour_high = DAMAGE_LABOUR_RANGES.get(
+        damage.lower(), (3500, 12000)
+    )
+    part_low, part_high = PART_PRICE_RANGES[part]
+
+    if action == "Repair & refinish":
+        # Part ranges provide a transparent reference, but are not charged
+        # when the selected action is repair rather than replacement.
+        cost_low, cost_high = labour_low, labour_high
+    else:
+        cost_low = labour_low + part_low
+        cost_high = labour_high + part_high
+
+    return (
+        int(round(cost_low * vehicle_multiplier / 100) * 100),
+        int(round(cost_high * vehicle_multiplier / 100) * 100),
+        int(round(part_low * vehicle_multiplier / 100) * 100),
+        int(round(part_high * vehicle_multiplier / 100) * 100),
+    )
+
+
+def insurance_scenario(total, package):
+    if package["coverage"] <= 0:
+        return 0, total
+    eligible_after_deductible = max(0, total - package["deductible"])
+    insurer_share = min(
+        package["cap"], eligible_after_deductible * package["coverage"]
+    )
+    return int(round(insurer_share)), int(round(total - insurer_share))
+
+
+# ============================================================
 # MODELS
 # ============================================================
 def download_checkpoint(model_path: Path, url: str, minimum_mb: int = 40):
@@ -1052,25 +1268,111 @@ def draw_accepted_detections(image_bgr, detections):
         colour = colours[index % len(colours)]
         mask = np.asarray(detection["mask"], dtype=bool)
         mask_rgba = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-        mask_rgba[mask] = (*colour, 105)
+        mask_rgba[mask] = (*colour, 92)
         canvas = Image.alpha_composite(canvas, Image.fromarray(mask_rgba, "RGBA"))
 
+        # Add a strong mask boundary without requiring OpenCV on Streamlit Cloud.
+        mask_image = Image.fromarray(mask.astype(np.uint8) * 255)
+        boundary_width = max(3, min(11, int(round(min(mask.shape) * 0.006))))
+        if boundary_width % 2 == 0:
+            boundary_width += 1
+        dilated = np.asarray(mask_image.filter(ImageFilter.MaxFilter(boundary_width)))
+        eroded = np.asarray(mask_image.filter(ImageFilter.MinFilter(boundary_width)))
+        boundary = np.logical_and(dilated > 0, eroded == 0)
+        boundary_rgba = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
+        boundary_rgba[boundary] = (*colour, 245)
+        canvas = Image.alpha_composite(
+            canvas, Image.fromarray(boundary_rgba, "RGBA")
+        )
+
     draw = ImageDraw.Draw(canvas)
+    width, height = canvas.size
+    title_size = max(24, min(72, int(round(min(width, height) * 0.040))))
+    detail_size = max(18, min(52, int(round(title_size * 0.70))))
+
+    def load_font(size, bold=False):
+        candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"
+            if bold
+            else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        ]
+        for font_path in candidates:
+            try:
+                return ImageFont.truetype(font_path, size=size)
+            except OSError:
+                continue
+        return ImageFont.load_default()
+
+    title_font = load_font(title_size, bold=True)
+    detail_font = load_font(detail_size)
+
     for index, detection in enumerate(detections):
         colour = colours[index % len(colours)]
-        x1, y1, x2, y2 = [int(v) for v in detection["box"]]
-        label = f'{detection["name"]} {detection["confidence"]:.0%}'
-        draw.rectangle((x1, y1, x2, y2), outline=(*colour, 255), width=3)
-        label_y = max(0, y1 - 24)
-        text_box = draw.textbbox((x1, label_y), label)
-        padded_box = (
-            text_box[0] - 3,
-            text_box[1] - 2,
-            text_box[2] + 3,
-            text_box[3] + 2,
+        x1, y1, x2, y2 = [int(round(v)) for v in detection["box"]]
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(width - 1, x2), min(height - 1, y2)
+        line_width = max(4, min(12, int(round(min(width, height) * 0.005))))
+        draw.rectangle((x1, y1, x2, y2), outline=(*colour, 255), width=line_width)
+
+        finding = f'F-{index + 1:02d}  {detection["name"].upper()}'
+        confidence = f'CONFIDENCE  {detection["confidence"]:.0%}'
+        pad_x = max(10, int(round(title_size * 0.34)))
+        pad_y = max(7, int(round(title_size * 0.22)))
+        line_gap = max(3, int(round(title_size * 0.10)))
+        title_box = draw.textbbox((0, 0), finding, font=title_font)
+        detail_box = draw.textbbox((0, 0), confidence, font=detail_font)
+        panel_width = max(
+            title_box[2] - title_box[0], detail_box[2] - detail_box[0]
+        ) + 2 * pad_x
+        panel_height = (
+            title_box[3] - title_box[1]
+            + detail_box[3] - detail_box[1]
+            + line_gap
+            + 2 * pad_y
         )
-        draw.rectangle(padded_box, fill=(*colour, 255))
-        draw.text((x1, label_y), label, fill=(12, 14, 16, 255))
+
+        label_x = min(max(0, x1), max(0, width - panel_width))
+        label_y = y1 - panel_height - line_width
+        if label_y < 0:
+            label_y = min(height - panel_height, y1 + line_width)
+        label_y = max(0, label_y)
+
+        panel = (
+            label_x,
+            label_y,
+            min(width, label_x + panel_width),
+            min(height, label_y + panel_height),
+        )
+        draw.rounded_rectangle(
+            panel,
+            radius=max(5, int(round(title_size * 0.18))),
+            fill=(10, 14, 18, 238),
+            outline=(*colour, 255),
+            width=max(2, line_width // 2),
+        )
+        text_x = label_x + pad_x
+        title_y = label_y + pad_y - title_box[1]
+        draw.text(
+            (text_x, title_y),
+            finding,
+            font=title_font,
+            fill=(248, 249, 250, 255),
+            stroke_width=max(1, title_size // 28),
+            stroke_fill=(0, 0, 0, 220),
+        )
+        detail_y = (
+            label_y + pad_y + title_box[3] - title_box[1] + line_gap
+            - detail_box[1]
+        )
+        draw.text(
+            (text_x, detail_y),
+            confidence,
+            font=detail_font,
+            fill=(*colour, 255),
+        )
 
     return np.asarray(canvas.convert("RGB"))[:, :, ::-1]
 
@@ -1928,6 +2230,212 @@ if result is not None:
                 mime="text/csv",
                 use_container_width=True,
             )
+
+    if detections:
+        st.write("")
+        st.write("")
+        html_block(
+            """
+            <div class="section-kicker">Step 04 · Repair estimate</div>
+            <div class="section-title">Configure the vehicle and repair</div>
+            """
+        )
+        st.caption(
+            "Confirm the vehicle, affected component and intended repair action. "
+            "The AI supplies the damage findings; the pricing engine uses "
+            "illustrative prototype rates in Nepalese rupees."
+        )
+
+        vehicle_col, model_col = st.columns(2, gap="large")
+        with vehicle_col:
+            vehicle_make = st.selectbox(
+                "Vehicle manufacturer",
+                list(VEHICLE_CATALOG),
+                key=f"estimate_make_{inspection_id}",
+            )
+        with model_col:
+            vehicle_model = st.selectbox(
+                "Vehicle model / segment",
+                list(VEHICLE_CATALOG[vehicle_make]),
+                key=f"estimate_model_{inspection_id}_{vehicle_make}",
+            )
+
+        vehicle_multiplier = VEHICLE_CATALOG[vehicle_make][vehicle_model]
+        st.caption(
+            f"Selected vehicle: {vehicle_make} {vehicle_model} · "
+            f"prototype price factor {vehicle_multiplier:.2f}×"
+        )
+        st.write("")
+
+        estimate_rows = []
+        total_low = 0
+        total_high = 0
+
+        for i, detection in enumerate(detections, start=1):
+            damage_name = detection["name"].lower()
+            default_part = DEFAULT_PART_BY_DAMAGE.get(
+                damage_name, "Other exterior panel"
+            )
+            part_options = list(PART_PRICE_RANGES)
+            default_part_index = part_options.index(default_part)
+            suggested_action = (
+                "Replace component"
+                if damage_name in DEFAULT_PART_BY_DAMAGE
+                else "Repair & refinish"
+            )
+
+            with st.expander(
+                f"F-{i:02d} · {detection['name'].title()} · "
+                f"{detection['confidence']:.0%} confidence",
+                expanded=i == 1,
+            ):
+                part_col, action_col = st.columns(2, gap="large")
+                with part_col:
+                    affected_part = st.selectbox(
+                        "Affected component",
+                        part_options,
+                        index=default_part_index,
+                        key=f"part_{inspection_id}_{i}",
+                    )
+                with action_col:
+                    action_options = [
+                        "Repair & refinish",
+                        "Replace component",
+                    ]
+                    repair_action = st.selectbox(
+                        "Repair action",
+                        action_options,
+                        index=action_options.index(suggested_action),
+                        key=f"action_{inspection_id}_{i}",
+                    )
+
+                low, high, part_low, part_high = estimate_finding(
+                    damage_name,
+                    affected_part,
+                    repair_action,
+                    vehicle_multiplier,
+                )
+                st.caption(
+                    f"Reference replacement part: {npr(part_low)}–"
+                    f"{npr(part_high)}. It is included only when replacement "
+                    "is selected."
+                )
+
+            total_low += low
+            total_high += high
+            estimate_rows.append(
+                {
+                    "finding": f"F-{i:02d}",
+                    "damage": detection["name"].title(),
+                    "part": affected_part,
+                    "action": repair_action,
+                    "low": low,
+                    "high": high,
+                    "part_low": part_low,
+                    "part_high": part_high,
+                }
+            )
+
+        html_block(
+            f"""
+            <div class="estimate-hero">
+                <div class="section-kicker">Estimated repair range</div>
+                <div class="amount">{npr(total_low)} – {npr(total_high)}</div>
+                <div class="note">
+                    {html.escape(vehicle_make)} · {html.escape(vehicle_model)} ·
+                    {len(estimate_rows)} configured finding(s)
+                </div>
+            </div>
+            """
+        )
+
+        for row in estimate_rows:
+            html_block(
+                f"""
+                <div class="cost-line">
+                    <div>
+                        <div class="cost-name">
+                            {html.escape(row['finding'])} ·
+                            {html.escape(row['damage'])}
+                        </div>
+                        <div class="cost-detail">
+                            {html.escape(row['part'])} ·
+                            {html.escape(row['action'])}
+                        </div>
+                    </div>
+                    <div class="cost-value">
+                        {npr(row['low'])} – {npr(row['high'])}
+                    </div>
+                </div>
+                """
+            )
+
+        st.write("")
+        html_block(
+            """
+            <div class="section-kicker">Step 05 · Coverage scenario</div>
+            <div class="section-title">Compare service packages</div>
+            """
+        )
+        selected_package_name = st.selectbox(
+            "Insurance service package",
+            list(INSURANCE_PACKAGES),
+            index=0,
+            key=f"insurance_package_{inspection_id}",
+        )
+        selected_package = INSURANCE_PACKAGES[selected_package_name]
+        st.caption(selected_package["description"])
+
+        insurer_low, customer_low = insurance_scenario(
+            total_low, selected_package
+        )
+        insurer_high, customer_high = insurance_scenario(
+            total_high, selected_package
+        )
+
+        coverage_a, coverage_b, coverage_c = st.columns(3)
+        coverage_a.metric(
+            "Estimated repair",
+            f"{npr(total_low)}–{npr(total_high)}",
+        )
+        coverage_b.metric(
+            "Package contribution",
+            f"{npr(insurer_low)}–{npr(insurer_high)}",
+        )
+        coverage_c.metric(
+            "Estimated customer cost",
+            f"{npr(customer_low)}–{npr(customer_high)}",
+        )
+
+        estimate_export = pd.DataFrame(estimate_rows)
+        estimate_export.insert(0, "inspection_id", inspection_id)
+        estimate_export["vehicle_make"] = vehicle_make
+        estimate_export["vehicle_model"] = vehicle_model
+        estimate_export["insurance_package"] = selected_package_name
+        estimate_export["estimated_total_low_npr"] = total_low
+        estimate_export["estimated_total_high_npr"] = total_high
+        estimate_export["estimated_customer_low_npr"] = customer_low
+        estimate_export["estimated_customer_high_npr"] = customer_high
+
+        st.download_button(
+            "Download prototype estimate CSV",
+            data=estimate_export.to_csv(index=False).encode("utf-8"),
+            file_name=f"{inspection_id}_prototype_estimate.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        html_block(
+            """
+            <div class="prototype-notice">
+                PROTOTYPE ONLY · Rates, parts and coverage packages are dummy
+                assumptions for product testing. This is not a workshop quote,
+                insurer policy, claim decision or guarantee of coverage. A human
+                assessor must confirm the damaged part, repair method, parts
+                availability, labour and applicable policy terms.
+            </div>
+            """
+        )
 
     st.write("")
     st.caption(
