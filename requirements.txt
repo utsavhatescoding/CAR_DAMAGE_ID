@@ -5,3 +5,4 @@ pillow>=10,<13
 pandas>=2,<3
 gdown==5.2.0
 reportlab
+plotly
