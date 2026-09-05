@@ -4,3 +4,4 @@ numpy>=1.26,<3
 pillow>=10,<13
 pandas>=2,<3
 gdown==5.2.0
+reportlab
