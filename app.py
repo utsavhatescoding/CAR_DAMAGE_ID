@@ -6,6 +6,7 @@ import os
 import time
 import textwrap
 import urllib.request
+from urllib.parse import quote
 from datetime import datetime
 from pathlib import Path
 
@@ -1216,6 +1217,20 @@ def secret_or_environment(name: str):
         return None
 
 
+LIVE_INSPECTION_PAGE_URL = (
+    secret_or_environment("LIVE_INSPECTION_PAGE_URL")
+    or "https://utsavhatescoding--vehicle-live-inspection.modal.run"
+)
+LIVE_INSPECTION_PREDICT_URL = (
+    secret_or_environment("LIVE_INSPECTION_PREDICT_URL")
+    or "https://utsavhatescoding--vehicle-inspection-predict.modal.run"
+)
+LIVE_INSPECTION_LAUNCH_URL = (
+    f"{LIVE_INSPECTION_PAGE_URL}?endpoint="
+    f"{quote(LIVE_INSPECTION_PREDICT_URL, safe='')}"
+)
+
+
 def clean_damage_name(name):
     replacements = {
         "glass_shatter": "Shattered Glass",
@@ -1833,6 +1848,30 @@ html_block(
     </div>
     """
 )
+
+live_copy, live_action = st.columns(
+    [2.5, 1], gap="medium", vertical_alignment="center"
+)
+with live_copy:
+    html_block(
+        """
+        <div class="section-kicker">Experimental live mode</div>
+        <div class="section-title">Inspect through your phone camera</div>
+        """
+    )
+    st.caption(
+        "Open the mobile camera interface for frame-by-frame YOLO26 segmentation "
+        "on the remote GPU. No installation is required on your phone."
+    )
+with live_action:
+    st.link_button(
+        "Open Live Inspection ↗",
+        LIVE_INSPECTION_LAUNCH_URL,
+        use_container_width=True,
+        type="primary",
+    )
+
+st.write("")
 
 
 # ============================================================
